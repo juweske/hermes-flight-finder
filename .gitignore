@@ -12,3 +12,19 @@ build/
 
 # Local tracker state
 .hermes-flight-finder/
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Internal agent workspace
+.agent/
+.agents/
+.codex/
+AGENTS.md
+
+# Editor and operating system files
+.DS_Store
+.idea/
+.vscode/
