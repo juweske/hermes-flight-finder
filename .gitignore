@@ -11,5 +11,4 @@ build/
 *.egg-info/
 
 # Local tracker state
-.hermes-flight-tracker/
-
+.hermes-flight-finder/

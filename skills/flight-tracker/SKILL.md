@@ -2,7 +2,7 @@
 name: flight-tracker
 description: Search flights, find flexible-date deals, manage local flight-price watches, and check saved watches using the hermes-flights CLI.
 version: 0.1.0
-author: Hermes Flight Tracker contributors
+author: Hermes Flight Finder contributors
 platforms: [linux, macos]
 metadata:
   hermes:
@@ -20,7 +20,7 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
 
 1. Confirm `hermes-flights` is available with `hermes-flights --help` when its availability is
    unknown.
-2. If it is absent, explain that the Hermes Flight Tracker Python application must be installed
+2. If it is absent, explain that the Hermes Flight Finder Python application must be installed
    before flight commands can run. Do not claim an installation succeeded unless the terminal
    confirms it.
 3. Resolve natural-language dates to explicit `YYYY-MM-DD` values before invoking the CLI. Ask a

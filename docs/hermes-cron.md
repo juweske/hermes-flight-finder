@@ -1,6 +1,6 @@
 # Hermes Cron Integration
 
-Hermes Flight Tracker does not schedule its own work. Hermes Agent owns schedules, sessions, and
+Hermes Flight Finder does not schedule its own work. Hermes Agent owns schedules, sessions, and
 message delivery; this project exposes the deterministic `hermes-flights watch check --json`
 command that a Hermes cron job invokes.
 

@@ -220,7 +220,7 @@ wheels = [
 ]
 
 [[package]]
-name = "hermes-flight-tracker"
+name = "hermes-flight-finder"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

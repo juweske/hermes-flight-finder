@@ -1,4 +1,4 @@
-"""Command-line entry point for Hermes Flight Tracker."""
+"""Command-line entry point for Hermes Flight Finder."""
 
 from __future__ import annotations
 

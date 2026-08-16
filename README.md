@@ -1,10 +1,10 @@
-# Hermes Flight Tracker
+# Hermes Flight Finder
 
 Ask your Hermes agent:
 
 > Track cheap nonstop 2-5 night trips from Hamburg to Nice during the next eight weeks.
 
-Hermes Flight Tracker will search Google Flights through `fli`, store local price history,
+Hermes Flight Finder will search Google Flights through `fli`, store local price history,
 and let Hermes notify you when a configured deal condition is met.
 
 ## Status
@@ -34,10 +34,10 @@ uv run pyright
 
 ## Install
 
-Hermes Flight Tracker is distributed from this GitHub repository. Install the CLI with `uv`:
+Hermes Flight Finder is distributed from this GitHub repository. Install the CLI with `uv`:
 
 ```bash
-uv tool install git+https://github.com/<github-owner>/hermes-flight-tracker.git
+uv tool install git+https://github.com/juweske/hermes-flight-finder.git
 hermes-flights doctor --json
 ```
 
@@ -97,8 +97,8 @@ hermes-flights watch show <watch-id> --json
 hermes-flights watch remove <watch-id> --json
 ```
 
-Watch state is stored locally in `~/.hermes-flight-tracker/state.json`; observations and alert
-records are stored alongside it in `history.json`. Set `HERMES_FLIGHT_TRACKER_DATA_DIR` to use
+Watch state is stored locally in `~/.hermes-flight-finder/state.json`; observations and alert
+records are stored alongside it in `history.json`. Set `HERMES_FLIGHT_FINDER_DATA_DIR` to use
 another local directory.
 
 ## Price Checking
@@ -114,7 +114,7 @@ The Hermes skill bundle is in `skills/flight-tracker/`. Once this repository is 
 it with:
 
 ```bash
-hermes skills install <github-owner>/hermes-flight-tracker/skills/flight-tracker
+hermes skills install juweske/hermes-flight-finder/skills/flight-tracker
 ```
 
 Install the Python CLI separately, then start a fresh Hermes session (or use `--now` when

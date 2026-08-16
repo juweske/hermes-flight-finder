@@ -3,13 +3,13 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "hermes-flight-tracker"
+name = "hermes-flight-finder"
 version = "0.1.0"
 description = "A CLI and Hermes skill for searching and monitoring flight prices."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Hermes Flight Tracker contributors" }]
+authors = [{ name = "Hermes Flight Finder contributors" }]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
   "Programming Language :: Python :: 3",
@@ -32,6 +32,9 @@ dev = [
 [project.scripts]
 hermes-flights = "hermes_flight_tracker.cli:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/hermes_flight_tracker"]
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
@@ -51,4 +54,3 @@ include = ["src", "tests"]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
-

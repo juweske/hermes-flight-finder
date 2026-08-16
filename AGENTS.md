@@ -2,7 +2,7 @@
 
 ## Project
 
-Hermes Flight Tracker is a Python CLI and Hermes Agent skill for searching and monitoring
+Hermes Flight Finder is a Python CLI and Hermes Agent skill for searching and monitoring
 flight prices using the `fli` library. Read `docs/development.md` before architectural or
 user-facing changes.
 
@@ -41,4 +41,3 @@ change, or major skill redesign, create and maintain an ExecPlan following `.age
 
 Run relevant tests, lint, formatting, and type checks; confirm changed CLI behavior; and update
 documentation for user-visible behavior.
-

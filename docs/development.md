@@ -1,6 +1,6 @@
 # Development Guide
 
-This repository implements the Hermes Flight Tracker V1 development guide supplied with the
+This repository implements the Hermes Flight Finder V1 development guide supplied with the
 project. The guide is the product source of truth for the initial milestones.
 
 ## Milestones
@@ -20,4 +20,3 @@ project. The guide is the product source of truth for the initial milestones.
 - Persist only normalized, project-owned domain models.
 - Keep state local and behind a repository interface.
 - Keep regular tests offline; reserve provider calls for `live` tests.
-

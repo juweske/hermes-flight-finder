@@ -12,7 +12,7 @@ class StorageError(Exception):
 
 
 class StateCorruptError(StorageError):
-    """The local state file is not a valid Hermes Flight Tracker document."""
+    """The local state file is not a valid Hermes Flight Finder document."""
 
 
 class WatchRepository(Protocol):

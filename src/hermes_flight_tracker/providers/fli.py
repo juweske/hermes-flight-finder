@@ -1,4 +1,4 @@
-"""Adapter from the `fli` package to Hermes Flight Tracker domain models."""
+"""Adapter from the `fli` package to Hermes Flight Finder domain models."""
 
 from __future__ import annotations
 

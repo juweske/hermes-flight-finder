@@ -72,7 +72,7 @@ def test_watch_help_exits_successfully(capsys: CaptureFixture[str]) -> None:
 def test_doctor_validates_an_isolated_state_directory(
     capsys: CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HERMES_FLIGHT_TRACKER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HERMES_FLIGHT_FINDER_DATA_DIR", str(tmp_path))
 
     exit_code = main(
         ["doctor", "--json"], provider=_FakeProvider(), repository=JsonWatchRepository(tmp_path)

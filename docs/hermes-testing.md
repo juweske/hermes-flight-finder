@@ -8,7 +8,7 @@ and optional scheduled checks.
 Install Python 3.11+ and [uv](https://docs.astral.sh/uv/), then run:
 
 ```bash
-uv tool install git+https://github.com/<github-owner>/hermes-flight-tracker.git
+uv tool install git+https://github.com/juweske/hermes-flight-finder.git
 hermes-flights doctor --json
 ```
 
@@ -34,7 +34,7 @@ retry later rather than treating it as no flights.
 Install the skill from the published repository:
 
 ```bash
-hermes skills install <github-owner>/hermes-flight-tracker/skills/flight-tracker --now
+hermes skills install juweske/hermes-flight-finder/skills/flight-tracker --now
 ```
 
 `--now` loads the skill in the current Hermes session. Without it, start a fresh Hermes session.
