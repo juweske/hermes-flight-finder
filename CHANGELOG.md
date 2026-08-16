@@ -6,5 +6,5 @@ All notable changes to Hermes Flight Finder are documented here.
 
 - Added specific-date and flexible-date searches through the `fli` provider.
 - Added local JSON watches, price observations, deterministic deal alerts, and `watch check`.
-- Added the Hermes `flight-tracker` skill and Hermes cron integration guidance.
+- Added the Hermes `flight-finder` skill and Hermes cron integration guidance.
 - Added clean-install diagnostics with `hermes-flights doctor`.

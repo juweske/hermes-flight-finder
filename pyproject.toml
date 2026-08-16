@@ -30,10 +30,10 @@ dev = [
 ]
 
 [project.scripts]
-hermes-flights = "hermes_flight_tracker.cli:main"
+hermes-flights = "hermes_flight_finder.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/hermes_flight_tracker"]
+packages = ["src/hermes_flight_finder"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

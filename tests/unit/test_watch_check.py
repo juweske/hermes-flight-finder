@@ -2,15 +2,15 @@ from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from hermes_flight_tracker.models import (
+from hermes_flight_finder.models import (
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightOffer,
     FlightQuery,
     Watch,
 )
-from hermes_flight_tracker.storage import JsonWatchRepository
-from hermes_flight_tracker.tracking import WatchCheckService
+from hermes_flight_finder.storage import JsonWatchRepository
+from hermes_flight_finder.tracking import WatchCheckService
 
 
 class _PriceProvider:

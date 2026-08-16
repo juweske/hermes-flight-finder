@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from hermes_flight_tracker.models import AlertRecord, CheckResult, Deal, PriceObservation, Watch
-from hermes_flight_tracker.providers.base import FlightProvider
-from hermes_flight_tracker.search.flexible import FlexibleSearchService
-from hermes_flight_tracker.storage.base import WatchRepository
+from hermes_flight_finder.models import AlertRecord, CheckResult, Deal, PriceObservation, Watch
+from hermes_flight_finder.providers.base import FlightProvider
+from hermes_flight_finder.search.flexible import FlexibleSearchService
+from hermes_flight_finder.storage.base import WatchRepository
 
 
 class WatchCheckService:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from hermes_flight_tracker.models import (
+from hermes_flight_finder.models import (
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightOffer,

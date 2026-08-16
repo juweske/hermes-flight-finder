@@ -1,18 +1,18 @@
 from pathlib import Path
 
 
-def test_flight_tracker_skill_declares_terminal_json_workflow() -> None:
-    skill = (Path("skills") / "flight-tracker" / "SKILL.md").read_text(encoding="utf-8")
+def test_flight_finder_skill_declares_terminal_json_workflow() -> None:
+    skill = (Path("skills") / "flight-finder" / "SKILL.md").read_text(encoding="utf-8")
 
-    assert "name: flight-tracker" in skill
+    assert "name: flight-finder" in skill
     assert "requires_toolsets: [terminal]" in skill
     assert "hermes-flights watch check --json" in skill
     assert "Never invent availability" in skill
     assert "exactly [SILENT]" in skill
 
 
-def test_flight_tracker_skill_includes_cli_reference() -> None:
-    reference = (Path("skills") / "flight-tracker" / "references" / "cli.md").read_text(
+def test_flight_finder_skill_includes_cli_reference() -> None:
+    reference = (Path("skills") / "flight-finder" / "references" / "cli.md").read_text(
         encoding="utf-8"
     )
 

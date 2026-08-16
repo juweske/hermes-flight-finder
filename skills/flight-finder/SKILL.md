@@ -1,5 +1,5 @@
 ---
-name: flight-tracker
+name: flight-finder
 description: Search flights, find flexible-date deals, manage local flight-price watches, and check saved watches using the hermes-flights CLI.
 version: 0.1.0
 author: Hermes Flight Finder contributors
@@ -10,7 +10,7 @@ metadata:
     requires_toolsets: [terminal]
 ---
 
-# Flight Tracker
+# Flight Finder
 
 Use this skill for flight searches, flexible-trip deal searches, saved price watches, and watch
 checks. Use the `hermes-flights` executable through the terminal. The CLI performs all price
@@ -98,7 +98,7 @@ stops only when returned. Never invent missing fields.
 Example standalone CLI setup:
 
 ```bash
-hermes cron create "every 6h" "Run hermes-flights watch check --json. If ok is false, report the error. If alerts is empty, respond with exactly [SILENT]. Otherwise report each alert concisely with route, dates, price, and improvement." --skill flight-tracker --name "flight-price-checks" --deliver telegram
+hermes cron create "every 6h" "Run hermes-flights watch check --json. If ok is false, report the error. If alerts is empty, respond with exactly [SILENT]. Otherwise report each alert concisely with route, dates, price, and improvement." --skill flight-finder --name "flight-price-checks" --deliver telegram
 ```
 
 Scheduling is an explicit user action. Do not create, change, pause, or remove a cron job unless

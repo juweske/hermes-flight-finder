@@ -17,10 +17,10 @@ routine quiet checks from creating chat notifications.
 
 ## Create A Job
 
-After installing the `flight-tracker` skill and the `hermes-flights` executable:
+After installing the `flight-finder` skill and the `hermes-flights` executable:
 
 ```bash
-hermes cron create "every 6h" "Run hermes-flights watch check --json. If ok is false, report the error. If alerts is empty, respond with exactly [SILENT]. Otherwise report each alert concisely with route, dates, price, and improvement." --skill flight-tracker --name "flight-price-checks" --deliver telegram
+hermes cron create "every 6h" "Run hermes-flights watch check --json. If ok is false, report the error. If alerts is empty, respond with exactly [SILENT]. Otherwise report each alert concisely with route, dates, price, and improvement." --skill flight-finder --name "flight-price-checks" --deliver telegram
 ```
 
 Use `--deliver origin` for the source chat, or another configured Hermes delivery target. Confirm

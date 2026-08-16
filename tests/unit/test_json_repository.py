@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from hermes_flight_tracker.models import MaxStops, Watch
-from hermes_flight_tracker.storage import JsonWatchRepository, StateCorruptError
+from hermes_flight_finder.models import MaxStops, Watch
+from hermes_flight_finder.storage import JsonWatchRepository, StateCorruptError
 
 
 def _watch() -> Watch:

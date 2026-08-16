@@ -110,11 +110,11 @@ the same price and dates are suppressed.
 
 ## Hermes Skill
 
-The Hermes skill bundle is in `skills/flight-tracker/`. Once this repository is published, install
+The Hermes skill bundle is in `skills/flight-finder/`. Once this repository is published, install
 it with:
 
 ```bash
-hermes skills install juweske/hermes-flight-finder/skills/flight-tracker
+hermes skills install juweske/hermes-flight-finder/skills/flight-finder
 ```
 
 Install the Python CLI separately, then start a fresh Hermes session (or use `--now` when

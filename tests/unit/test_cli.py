@@ -6,15 +6,15 @@ from pathlib import Path
 import pytest
 from pytest import CaptureFixture
 
-from hermes_flight_tracker.cli import main
-from hermes_flight_tracker.models import (
+from hermes_flight_finder.cli import main
+from hermes_flight_finder.models import (
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightLeg,
     FlightOffer,
     FlightQuery,
 )
-from hermes_flight_tracker.storage import JsonWatchRepository
+from hermes_flight_finder.storage import JsonWatchRepository
 
 
 class _FakeProvider:

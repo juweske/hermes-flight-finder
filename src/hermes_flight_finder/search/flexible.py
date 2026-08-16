@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from hermes_flight_tracker.models import FlexibleDateOffer, FlexibleSearchQuery
-from hermes_flight_tracker.providers.base import FlightProvider
+from hermes_flight_finder.models import FlexibleDateOffer, FlexibleSearchQuery
+from hermes_flight_finder.providers.base import FlightProvider
 
 
 class FlexibleSearchService:

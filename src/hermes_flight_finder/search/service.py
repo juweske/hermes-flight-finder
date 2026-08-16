@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from hermes_flight_tracker.models import FlightOffer, FlightQuery
-from hermes_flight_tracker.providers.base import FlightProvider
+from hermes_flight_finder.models import FlightOffer, FlightQuery
+from hermes_flight_finder.providers.base import FlightProvider
 
 
 class SearchService:

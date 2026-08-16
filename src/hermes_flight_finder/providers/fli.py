@@ -28,14 +28,14 @@ from fli.models import (
 from fli.models import MaxStops as FliMaxStops
 from fli.search import DatePrice, SearchDates, SearchFlights
 
-from hermes_flight_tracker.models import (
+from hermes_flight_finder.models import (
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightLeg,
     FlightOffer,
     FlightQuery,
 )
-from hermes_flight_tracker.providers.base import ProviderError
+from hermes_flight_finder.providers.base import ProviderError
 
 
 class _SearchClient(Protocol):

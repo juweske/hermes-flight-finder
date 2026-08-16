@@ -4,8 +4,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from hermes_flight_tracker.models import FlightQuery
-from hermes_flight_tracker.providers import FliFlightProvider
+from hermes_flight_finder.models import FlightQuery
+from hermes_flight_finder.providers import FliFlightProvider
 
 
 @pytest.mark.live

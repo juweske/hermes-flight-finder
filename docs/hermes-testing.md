@@ -34,7 +34,7 @@ retry later rather than treating it as no flights.
 Install the skill from the published repository:
 
 ```bash
-hermes skills install juweske/hermes-flight-finder/skills/flight-tracker --now
+hermes skills install juweske/hermes-flight-finder/skills/flight-finder --now
 ```
 
 `--now` loads the skill in the current Hermes session. Without it, start a fresh Hermes session.

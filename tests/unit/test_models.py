@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from hermes_flight_tracker.models import FlexibleSearchQuery, FlightQuery
+from hermes_flight_finder.models import FlexibleSearchQuery, FlightQuery
 
 
 def test_query_normalizes_codes() -> None:

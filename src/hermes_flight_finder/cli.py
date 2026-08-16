@@ -10,8 +10,8 @@ from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 
-from hermes_flight_tracker.config import get_data_dir
-from hermes_flight_tracker.models import (
+from hermes_flight_finder.config import get_data_dir
+from hermes_flight_finder.models import (
     Cabin,
     FlexibleDateOffer,
     FlexibleSearchQuery,
@@ -21,10 +21,10 @@ from hermes_flight_tracker.models import (
     Watch,
     new_watch_id,
 )
-from hermes_flight_tracker.providers import FliFlightProvider, FlightProvider, ProviderError
-from hermes_flight_tracker.search import FlexibleSearchService, SearchService
-from hermes_flight_tracker.storage import JsonWatchRepository, StateCorruptError, WatchRepository
-from hermes_flight_tracker.tracking import WatchCheckService
+from hermes_flight_finder.providers import FliFlightProvider, FlightProvider, ProviderError
+from hermes_flight_finder.search import FlexibleSearchService, SearchService
+from hermes_flight_finder.storage import JsonWatchRepository, StateCorruptError, WatchRepository
+from hermes_flight_finder.tracking import WatchCheckService
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -385,7 +385,7 @@ def _watch_as_dict(watch: Watch) -> dict[str, object]:
 
 
 def _deal_as_dict(deal: object) -> dict[str, object]:
-    from hermes_flight_tracker.models import Deal
+    from hermes_flight_finder.models import Deal
 
     typed_deal = deal if isinstance(deal, Deal) else None
     if typed_deal is None:

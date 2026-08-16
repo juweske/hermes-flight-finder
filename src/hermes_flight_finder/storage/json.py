@@ -10,9 +10,9 @@ from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
-from hermes_flight_tracker.config import get_data_dir
-from hermes_flight_tracker.models import AlertRecord, Cabin, MaxStops, PriceObservation, Watch
-from hermes_flight_tracker.storage.base import StateCorruptError, WatchRepository
+from hermes_flight_finder.config import get_data_dir
+from hermes_flight_finder.models import AlertRecord, Cabin, MaxStops, PriceObservation, Watch
+from hermes_flight_finder.storage.base import StateCorruptError, WatchRepository
 
 _STATE_VERSION = 1
 

@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Protocol, cast
 
-from hermes_flight_tracker.models import FlexibleSearchQuery, FlightQuery
-from hermes_flight_tracker.providers.fli import FliFlightProvider
+from hermes_flight_finder.models import FlexibleSearchQuery, FlightQuery
+from hermes_flight_finder.providers.fli import FliFlightProvider
 
 
 @dataclass(frozen=True)

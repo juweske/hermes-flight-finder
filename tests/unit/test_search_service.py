@@ -1,14 +1,14 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from hermes_flight_tracker.models import (
+from hermes_flight_finder.models import (
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightLeg,
     FlightOffer,
     FlightQuery,
 )
-from hermes_flight_tracker.search import FlexibleSearchService, SearchService
+from hermes_flight_finder.search import FlexibleSearchService, SearchService
 
 
 class _FakeProvider:

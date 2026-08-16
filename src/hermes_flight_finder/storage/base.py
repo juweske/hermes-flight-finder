@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from hermes_flight_tracker.models import AlertRecord, PriceObservation, Watch
+from hermes_flight_finder.models import AlertRecord, PriceObservation, Watch
 
 
 class StorageError(Exception):
