@@ -12,12 +12,36 @@ and let Hermes notify you when a configured deal condition is met.
 V1 is ready for source distribution. Specific-date search, flexible dates, local watches, price
 history, deterministic alerts, the Hermes skill bundle, and cron guidance are available.
 
-## Planned Features
+## Roadmap
 
-- Specific-date and flexible-date flight search
-- Local JSON-backed price watches and history
-- Deterministic threshold and price-drop alerts
-- A Hermes skill that invokes the CLI in JSON mode
+### V1: Available Now
+
+- [x] Specific-date and flexible-date flight search
+- [x] Local JSON watches, observations, and deterministic target-price or price-drop alerts
+- [x] Hermes skill, JSON-first CLI contract, and scheduled watch-check guidance
+- [x] Local-first storage with no account, analytics, or API key
+
+### P0: Price Intelligence
+
+- [ ] Historic price tracking with all-time and rolling low points, trend, volatility, and fare context
+- [ ] `watch history` output and a flexible-date price grid for comparing possible trips
+- [ ] Explainable deal scoring based on price, stops, duration, time, and distance from historical lows
+- [ ] Nearby and multiple-airport searches, plus watch health and stale-data status
+
+### P1: Better Decisions And Delivery
+
+- [ ] Rich fare details: bags, refundability, change policy, layovers, and self-transfer warnings
+- [ ] One-way, open-jaw, and multi-city trips; saved comparisons and CSV or JSON export
+- [ ] Per-watch notification preferences, quiet hours, and delivery controls
+- [ ] Shareable price reports for Telegram and other Hermes channels, including a rendered price-history chart, low-point markers, and the best current date combinations
+- [ ] Explicit, user-approved booking handoff links to airline or OTA providers for selected offers
+
+### P2: Platform And Provider Expansion
+
+- [ ] Optional provider integrations for improved reliability and booking-link coverage
+- [ ] MCP interface for non-Hermes agents and automation workflows
+- [ ] Evaluate full in-app booking only with appropriate partners and complete payment, confirmation, changes, cancellations, and support design
+
 
 ## Development
 

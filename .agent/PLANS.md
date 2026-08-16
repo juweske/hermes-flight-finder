@@ -18,4 +18,5 @@ Plans must be self-contained enough for another contributor to continue the work
 ## Product Roadmap
 
 - Historic price tracking: retain and expose normalized fare observations per watch, add price-low summaries and a time-series view so users can assess current fares against prior low points.
+- Shareable price visuals: render Telegram-ready price-history charts and best-date summaries for explicit deal notifications.
 - Direct booking: begin with explicit, user-approved deep links or provider handoff for selected offers. Evaluate full in-app booking only after choosing partners and designing authentication, payment, confirmation, changes, cancellations, and support responsibilities.
