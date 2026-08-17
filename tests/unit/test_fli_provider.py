@@ -33,14 +33,34 @@ class _RawFlight:
     stops: int
 
 
+@dataclass(frozen=True)
+class _RawBookingOption:
+    vendor_name: str | None
+    is_airline_direct: bool
+    price: float | None
+    currency: str | None
+    fare_name: str | None
+    booking_url: str | None
+    google_click_url: str | None
+
+
 class _FakeSearchClient:
-    def __init__(self, results: object) -> None:
+    def __init__(self, results: object, booking_options: object = ()) -> None:
         self.results = results
+        self.booking_options = booking_options
         self.currency: str | None = None
+        self.booked_flight: object | None = None
 
     def search(self, filters: object, top_n: int = 5, currency: str | None = None) -> object:
         self.currency = currency
         return self.results
+
+    def get_booking_options(
+        self, flight: object, filters: object, currency: str | None = None
+    ) -> object:
+        self.booked_flight = flight
+        self.currency = currency
+        return self.booking_options
 
 
 @dataclass(frozen=True)
@@ -134,3 +154,33 @@ def test_provider_expands_each_requested_duration() -> None:
     assert client.durations == [2, 3, 4]
     assert [offer.nights for offer in offers] == [2, 3, 4]
     assert [str(offer.price) for offer in offers] == ["98.0", "97.0", "96.0"]
+
+
+def test_provider_returns_direct_booking_handoffs_for_the_ranked_offer() -> None:
+    expensive = _raw_flight("HAM", "NCE", 120.0)
+    cheap = _raw_flight("HAM", "NCE", 89.0)
+    booking_option = _RawBookingOption(
+        vendor_name="Eurowings",
+        is_airline_direct=True,
+        price=89.0,
+        currency="EUR",
+        fare_name="Basic",
+        booking_url="https://book.example.test/eurowings",
+        google_click_url="https://google.example.test/eurowings",
+    )
+    client = _FakeSearchClient([expensive, cheap], [booking_option])
+    provider = FliFlightProvider(search_factory=lambda: client)
+    query = FlightQuery(
+        origin="HAM",
+        destination="NCE",
+        departure_date=date.today() + timedelta(days=10),
+        currency="EUR",
+    )
+
+    selected_offer, options = provider.booking_options(query, 0)
+
+    assert str(selected_offer.price) == "89.0"
+    assert client.booked_flight is cheap
+    assert options[0].vendor_name == "Eurowings"
+    assert options[0].is_airline_direct is True
+    assert options[0].handoff_url == "https://book.example.test/eurowings"

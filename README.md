@@ -22,23 +22,25 @@ history, deterministic alerts, the Hermes skill bundle, and cron guidance are av
 - [x] Hermes skill, JSON-first CLI contract, and scheduled watch-check guidance
 - [x] Local-first storage with no account, analytics, or API key
 
-### P0: Price Intelligence
+### P0: Booking And Trip Planning
 
-- [ ] Historic price tracking with all-time and rolling low points, trend, volatility, and fare context
-- [ ] Flexible-date price grid for comparing possible trips
-- [ ] Explainable deal scoring based on price, stops, duration, time, and distance from historical lows
-- [ ] Nearby and multiple-airport searches, plus watch health and stale-data status
+- [x] Explicit, user-approved booking handoff links to airline or OTA providers for selected offers
+- [ ] Booking context: bag allowance, fare conditions, refundability, and change policy when available
+- [ ] Booking warnings for long layovers and self-transfers
+- [ ] Multi-airport, open-jaw, and road-trip itineraries, such as Hamburg to Nice and Marseille to Berlin
+- [ ] Flexible-date price grid for comparing possible trip-date combinations
+- [ ] Watch health, stale-data status, and provider error visibility
 
-### P1: Better Decisions And Delivery
+### P1: Price Intelligence And Sharing
 
-- [ ] Rich fare details: bags, refundability, change policy, layovers, and self-transfer warnings
-- [ ] One-way, open-jaw, and multi-city trips; saved comparisons and CSV or JSON export
-- [ ] Per-watch notification preferences, quiet hours, and delivery controls
+- [ ] Historic price backfill from an optional provider, with all-time and rolling low points, trend, volatility, and fare context
+- [ ] Explainable deal scoring based on price, stops, duration, time, and historical context
+- [ ] Saved comparisons and CSV or JSON export
 - [ ] Shareable price reports for Telegram and other Hermes channels, including a rendered price-history chart, low-point markers, and the best current date combinations
-- [ ] Explicit, user-approved booking handoff links to airline or OTA providers for selected offers
 
-### P2: Platform And Provider Expansion
+### P2: Platform And Delivery Expansion
 
+- [ ] Per-watch notification preferences, quiet hours, and delivery controls
 - [ ] Optional provider integrations for improved reliability and booking-link coverage
 - [ ] MCP interface for non-Hermes agents and automation workflows
 - [ ] Evaluate full in-app booking only with appropriate partners and complete payment, confirmation, changes, cancellations, and support design
@@ -106,6 +108,19 @@ uv run hermes-flights dates \
 
 The command makes one calendar request per requested trip duration, then merges duplicate date
 pairs and orders the results by price.
+
+## Booking Handoff
+
+Use `booking options` after choosing a numbered specific-date search result. It reruns the search and
+returns current airline-direct or OTA links for that selection; it never opens a link or makes a
+purchase. Booking prices and availability can change before the provider page loads.
+
+```bash
+hermes-flights booking options \
+  --from HAM --to NCE \
+  --departure 2026-09-18 --return 2026-09-21 \
+  --offer 1 --json
+```
 
 ## Flight Watches
 

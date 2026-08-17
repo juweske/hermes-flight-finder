@@ -151,6 +151,24 @@ class FlightOffer:
 
 
 @dataclass(frozen=True, slots=True)
+class BookingOption:
+    """A current vendor handoff for a selected flight itinerary."""
+
+    vendor_name: str | None
+    is_airline_direct: bool
+    price: Decimal | None
+    currency: str | None
+    fare_name: str | None
+    booking_url: str | None
+    google_click_url: str | None
+
+    @property
+    def handoff_url(self) -> str | None:
+        """Prefer a direct vendor link, falling back to Google Flights."""
+        return self.booking_url or self.google_click_url
+
+
+@dataclass(frozen=True, slots=True)
 class FlexibleDateOffer:
     """A provider-supplied price for a round trip on a pair of dates."""
 

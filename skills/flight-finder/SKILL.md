@@ -62,6 +62,14 @@ hermes-flights dates --from HAM --to NCE --start 2026-08-20 --end 2026-10-15 --m
 The returned offers are calendar price/date pairs, not guaranteed itinerary details. Describe the
 price, departure date, return date, and nights only.
 
+### Booking Handoff
+
+When the user chooses a numbered result from a specific-date search and asks to book it, run
+`booking options` with the same route, dates, filters, and `--offer` number. Present returned
+options, preferring `is_airline_direct: true` when suitable, and clearly state that the provider
+confirms the final price and availability. Never open a link, start a booking, or select a vendor
+without the user explicitly choosing it.
+
 ### Manage Watches
 
 Use `watch add` to persist a flexible-date request. Include `--target-price` when the user gives

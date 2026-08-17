@@ -19,6 +19,17 @@ hermes-flights dates --from IATA --to IATA --start YYYY-MM-DD --end YYYY-MM-DD -
 
 Success contains price/date offers with `departure_date`, `return_date`, and `nights`.
 
+## Booking Handoff
+
+```bash
+hermes-flights booking options --from IATA --to IATA --departure YYYY-MM-DD [--return YYYY-MM-DD] [--cabin ECONOMY|PREMIUM_ECONOMY|BUSINESS|FIRST] [--passengers N] [--currency ISO] [--nonstop] [--airlines XX,YY] [--departure-window START-END] [--offer NUMBER] --json
+```
+
+The command reruns the exact search and returns `selected_offer` plus current `booking_options`.
+Each option includes vendor details, refreshed price when available, direct and Google click-through
+URLs, and `handoff_url` which prefers the direct vendor link. The CLI never opens a URL or completes
+a booking.
+
 ## Watches
 
 ```bash

@@ -20,6 +20,9 @@ from fli.models import (
     TripType,
 )
 from fli.models import (
+    BookingOption as FliBookingOption,
+)
+from fli.models import (
     FlightLeg as FliFlightLeg,
 )
 from fli.models import (
@@ -29,6 +32,7 @@ from fli.models import MaxStops as FliMaxStops
 from fli.search import DatePrice, SearchDates, SearchFlights
 
 from hermes_flight_finder.models import (
+    BookingOption,
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightLeg,
@@ -46,6 +50,13 @@ class _SearchClient(Protocol):
         currency: str | None = None,
         language: str | None = None,
         country: str | None = None,
+    ) -> object: ...
+
+    def get_booking_options(
+        self,
+        flight: FliFlightResult | tuple[FliFlightResult, ...],
+        filters: FlightSearchFilters,
+        currency: str | None = None,
     ) -> object: ...
 
 
@@ -85,6 +96,44 @@ class FliFlightProvider:
             raise ProviderError("Flight provider returned an unexpected response")
         results = cast(list[FliFlightResult | tuple[FliFlightResult, ...]], raw_results)
         return [self._normalize_itinerary(result) for result in results]
+
+    def booking_options(
+        self, query: FlightQuery, offer_index: int
+    ) -> tuple[FlightOffer, list[BookingOption]]:
+        """Return current vendor handoffs for one ranked result in a fresh search."""
+        try:
+            filters = self._build_filters(query)
+            client = cast(_SearchClient, self._search_factory())
+            raw_results = client.search(filters, currency=query.currency)
+        except Exception as error:
+            raise ProviderError("Flight provider request failed") from error
+
+        if raw_results is None:
+            raise ProviderError("Flight provider found no flight offers to book")
+        if not isinstance(raw_results, list):
+            raise ProviderError("Flight provider returned an unexpected response")
+        ranked = sorted(
+            (
+                (raw, self._normalize_itinerary(raw))
+                for raw in cast(list[FliFlightResult | tuple[FliFlightResult, ...]], raw_results)
+            ),
+            key=lambda item: _offer_sort_key(item[1]),
+        )
+        if offer_index < 0 or offer_index >= len(ranked):
+            raise ValueError(f"offer index must be between 1 and {len(ranked)}")
+
+        raw_offer, selected_offer = ranked[offer_index]
+        try:
+            raw_options = client.get_booking_options(raw_offer, filters, currency=query.currency)
+        except Exception as error:
+            raise ProviderError("Flight provider could not retrieve booking options") from error
+        if not isinstance(raw_options, list):
+            raise ProviderError("Flight provider returned unexpected booking options")
+        return selected_offer, [
+            self._normalize_booking_option(option)
+            for option in cast(list[FliBookingOption], raw_options)
+            if option.booking_url or option.google_click_url
+        ]
 
     def search_dates(self, query: FlexibleSearchQuery) -> list[FlexibleDateOffer]:
         """Search every requested trip duration through `fli`'s calendar API."""
@@ -182,6 +231,18 @@ class FliFlightProvider:
         )
 
     @staticmethod
+    def _normalize_booking_option(raw_option: FliBookingOption) -> BookingOption:
+        return BookingOption(
+            vendor_name=raw_option.vendor_name,
+            is_airline_direct=raw_option.is_airline_direct,
+            price=Decimal(str(raw_option.price)) if raw_option.price is not None else None,
+            currency=raw_option.currency,
+            fare_name=raw_option.fare_name,
+            booking_url=raw_option.booking_url,
+            google_click_url=raw_option.google_click_url,
+        )
+
+    @staticmethod
     def _normalize_date_price(raw_price: DatePrice) -> FlexibleDateOffer:
         if len(raw_price.date) != 2:
             raise ProviderError("Flight provider returned an unexpected date result")
@@ -192,6 +253,10 @@ class FliFlightProvider:
             price=Decimal(str(raw_price.price)),
             currency=raw_price.currency,
         )
+
+
+def _offer_sort_key(offer: FlightOffer) -> tuple[bool, Decimal, int]:
+    return (offer.price is None, offer.price or Decimal(), offer.duration_minutes)
 
 
 def _segment(

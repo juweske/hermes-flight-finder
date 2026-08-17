@@ -8,6 +8,7 @@ from pytest import CaptureFixture
 
 from hermes_flight_finder.cli import main
 from hermes_flight_finder.models import (
+    BookingOption,
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightLeg,
@@ -41,6 +42,25 @@ class _FakeProvider:
                 ),
             )
         ]
+
+    def booking_options(
+        self, query: FlightQuery, offer_index: int
+    ) -> tuple[FlightOffer, list[BookingOption]]:
+        offer = self.search(query)[offer_index]
+        return (
+            offer,
+            [
+                BookingOption(
+                    vendor_name="Example Air",
+                    is_airline_direct=True,
+                    price=Decimal("89"),
+                    currency="EUR",
+                    fare_name="Economy Light",
+                    booking_url="https://book.example.test/offer",
+                    google_click_url="https://google.example.test/offer",
+                )
+            ],
+        )
 
     def search_dates(self, query: FlexibleSearchQuery) -> list[FlexibleDateOffer]:
         return [
@@ -230,3 +250,40 @@ def test_watch_history_reports_lowest_price_since_tracking_started(
         "sources": ["fli"],
     }
     assert payload["observations"][0]["source"] == "fli"
+
+
+def test_booking_options_returns_current_vendor_handoff(capsys: CaptureFixture[str]) -> None:
+    exit_code = main(
+        [
+            "booking",
+            "options",
+            "--from",
+            "HAM",
+            "--to",
+            "NCE",
+            "--departure",
+            "2026-09-18",
+            "--return",
+            "2026-09-21",
+            "--offer",
+            "1",
+            "--json",
+        ],
+        provider=_FakeProvider(),
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["selected_offer"]["price"] == "89"
+    assert payload["booking_options"] == [
+        {
+            "vendor_name": "Example Air",
+            "is_airline_direct": True,
+            "price": "89",
+            "currency": "EUR",
+            "fare_name": "Economy Light",
+            "booking_url": "https://book.example.test/offer",
+            "google_click_url": "https://google.example.test/offer",
+            "handoff_url": "https://book.example.test/offer",
+        }
+    ]

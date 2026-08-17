@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from hermes_flight_finder.config import get_data_dir
 from hermes_flight_finder.models import (
+    BookingOption,
     Cabin,
     FlexibleDateOffer,
     FlexibleSearchQuery,
@@ -22,7 +23,12 @@ from hermes_flight_finder.models import (
     Watch,
     new_watch_id,
 )
-from hermes_flight_finder.providers import FliFlightProvider, FlightProvider, ProviderError
+from hermes_flight_finder.providers import (
+    BookingProvider,
+    FliFlightProvider,
+    FlightProvider,
+    ProviderError,
+)
 from hermes_flight_finder.search import FlexibleSearchService, SearchService
 from hermes_flight_finder.storage import JsonWatchRepository, StateCorruptError, WatchRepository
 from hermes_flight_finder.tracking import WatchCheckService
@@ -63,6 +69,15 @@ def build_parser() -> argparse.ArgumentParser:
     dates.add_argument("--airlines", type=_parse_airlines, default=())
     dates.add_argument("--departure-window", type=_parse_departure_window, metavar="START-END")
     dates.add_argument("--json", action="store_true", dest="json_output")
+
+    booking = subcommands.add_parser("booking", help="Retrieve booking handoff links.")
+    booking_subcommands = booking.add_subparsers(dest="booking_command", title="booking commands")
+    booking_options = booking_subcommands.add_parser(
+        "options", help="Retrieve current vendor links for a selected flight result."
+    )
+    _add_specific_query_arguments(booking_options)
+    booking_options.add_argument("--offer", type=int, default=1, metavar="NUMBER")
+    booking_options.add_argument("--json", action="store_true", dest="json_output")
 
     doctor = subcommands.add_parser(
         "doctor", help="Validate the local installation and configuration."
@@ -111,6 +126,8 @@ def main(
         return _run_search(arguments, provider or FliFlightProvider())
     if arguments.command == "dates":
         return _run_dates(arguments, provider or FliFlightProvider())
+    if arguments.command == "booking" and arguments.booking_command == "options":
+        return _run_booking(arguments, provider or FliFlightProvider())
     if arguments.command == "doctor":
         return _run_doctor(
             arguments, provider or FliFlightProvider(), repository or JsonWatchRepository()
@@ -192,6 +209,54 @@ def _run_search(arguments: argparse.Namespace, provider: FlightProvider) -> int:
         _write_json({"ok": True, "offers": [_offer_as_dict(offer) for offer in offers]})
     else:
         _write_human_offers(offers)
+    return 0
+
+
+def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int:
+    """Return current provider links without opening a browser or purchasing anything."""
+    if not isinstance(provider, BookingProvider):
+        _write_json(
+            {
+                "ok": False,
+                "error": {
+                    "code": "booking_not_supported",
+                    "message": "The configured flight provider does not support booking handoffs",
+                },
+            }
+        )
+        return 2
+    try:
+        if arguments.offer < 1:
+            raise ValueError("offer number must be at least 1")
+        query = FlightQuery(
+            origin=arguments.origin,
+            destination=arguments.destination,
+            departure_date=arguments.departure,
+            return_date=arguments.return_date,
+            cabin=Cabin(arguments.cabin),
+            max_stops=MaxStops.NON_STOP if arguments.nonstop else MaxStops.ANY,
+            passengers=arguments.passengers,
+            currency=arguments.currency,
+            airlines=arguments.airlines,
+            departure_window=arguments.departure_window,
+        )
+        selected_offer, options = provider.booking_options(query, arguments.offer - 1)
+    except ValueError as error:
+        _write_json({"ok": False, "error": {"code": "invalid_request", "message": str(error)}})
+        return 2
+    except ProviderError as error:
+        _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
+        return 2
+
+    payload: dict[str, object] = {
+        "ok": True,
+        "selected_offer": _offer_as_dict(selected_offer),
+        "booking_options": [_booking_option_as_dict(option) for option in options],
+    }
+    if arguments.json_output:
+        _write_json(payload)
+    else:
+        _write_human_booking_options(options)
     return 0
 
 
@@ -360,6 +425,19 @@ def _parse_decimal(value: str) -> Decimal:
         raise argparse.ArgumentTypeError("must be a decimal number") from error
 
 
+def _add_specific_query_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--from", dest="origin", required=True, metavar="IATA")
+    parser.add_argument("--to", dest="destination", required=True, metavar="IATA")
+    parser.add_argument("--departure", required=True, type=_parse_date, metavar="YYYY-MM-DD")
+    parser.add_argument("--return", dest="return_date", type=_parse_date, metavar="YYYY-MM-DD")
+    parser.add_argument("--cabin", choices=list(Cabin), default=Cabin.ECONOMY)
+    parser.add_argument("--passengers", type=int, default=1)
+    parser.add_argument("--currency", default="EUR")
+    parser.add_argument("--nonstop", action="store_true")
+    parser.add_argument("--airlines", type=_parse_airlines, default=())
+    parser.add_argument("--departure-window", type=_parse_departure_window, metavar="START-END")
+
+
 def _add_watch_query_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--from", dest="origin", required=True, metavar="IATA")
     parser.add_argument("--to", dest="destination", required=True, metavar="IATA")
@@ -380,6 +458,19 @@ def _offer_as_dict(offer: FlightOffer) -> dict[str, object]:
     payload["price"] = str(offer.price) if offer.price is not None else None
     payload["airlines"] = list(offer.airlines)
     return payload
+
+
+def _booking_option_as_dict(option: BookingOption) -> dict[str, object]:
+    return {
+        "vendor_name": option.vendor_name,
+        "is_airline_direct": option.is_airline_direct,
+        "price": str(option.price) if option.price is not None else None,
+        "currency": option.currency,
+        "fare_name": option.fare_name,
+        "booking_url": option.booking_url,
+        "google_click_url": option.google_click_url,
+        "handoff_url": option.handoff_url,
+    }
 
 
 def _flexible_offer_as_dict(offer: FlexibleDateOffer) -> dict[str, object]:
@@ -480,6 +571,24 @@ def _json_default(value: object) -> str:
     if isinstance(value, (date, Decimal)):
         return value.isoformat() if isinstance(value, date) else str(value)
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _write_human_booking_options(options: list[BookingOption]) -> None:
+    if not options:
+        print("No booking links are currently available for this offer.")
+        return
+    for index, option in enumerate(options, start=1):
+        vendor = option.vendor_name or "Unknown vendor"
+        direct = "airline direct" if option.is_airline_direct else "travel seller"
+        price = (
+            f"{option.currency or ''} {option.price}".strip()
+            if option.price
+            else "Price unavailable"
+        )
+        print(f"{index}. {vendor} ({direct}) - {price}")
+        if option.fare_name:
+            print(f"   Fare: {option.fare_name}")
+        print(f"   {option.handoff_url}")
 
 
 def _write_human_offers(offers: list[FlightOffer]) -> None:

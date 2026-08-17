@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from hermes_flight_finder.models import (
+    BookingOption,
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightOffer,
@@ -14,6 +15,17 @@ from hermes_flight_finder.models import (
 
 class ProviderError(Exception):
     """A flight provider could not complete a request safely."""
+
+
+@runtime_checkable
+class BookingProvider(Protocol):
+    """Retrieve current booking handoffs for a selected search result."""
+
+    def booking_options(
+        self, query: FlightQuery, offer_index: int
+    ) -> tuple[FlightOffer, list[BookingOption]]:
+        """Return the selected offer and current vendor booking options."""
+        ...
 
 
 class FlightProvider(Protocol):
