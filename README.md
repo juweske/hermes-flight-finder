@@ -25,9 +25,10 @@ history, deterministic alerts, the Hermes skill bundle, and cron guidance are av
 ### P0: Booking And Trip Planning
 
 - [x] User-approved Google Flights search handoff for selected offers
+- [ ] Preselected Google Flights itinerary handoff with both outbound and return flights already chosen
 - [ ] Full vendor-specific booking deep links when supported by a provider
 - [ ] Booking context: bag allowance, fare conditions, refundability, and change policy when available
-- [ ] Booking warnings for long layovers and self-transfers
+- [ ] Configurable itinerary-quality rules and warnings: long or overnight layovers, airport or terminal changes, self-transfers, and impractical total journey times
 - [ ] Multi-airport, open-jaw, and road-trip itineraries, such as Hamburg to Nice and Marseille to Berlin
 - [ ] Flexible-date price grid for comparing possible trip-date combinations
 - [ ] Watch health, stale-data status, and provider error visibility
