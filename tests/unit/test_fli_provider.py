@@ -45,8 +45,14 @@ class _RawBookingOption:
 
 
 class _FakeSearchClient:
-    def __init__(self, results: object, booking_options: object = ()) -> None:
+    def __init__(
+        self,
+        results: object,
+        booking_options: object = (),
+        itinerary_url: str = "https://www.google.com/travel/flights/booking?tfs=TEST",
+    ) -> None:
         self.results = results
+        self.itinerary_url = itinerary_url
         self.booking_options = booking_options
         self.currency: str | None = None
         self.booked_flight: object | None = None
@@ -61,6 +67,16 @@ class _FakeSearchClient:
         self.booked_flight = flight
         self.currency = currency
         return self.booking_options
+
+    def build_flight_booking_url(
+        self,
+        flight: object,
+        *,
+        currency: str | None = None,
+        language: str | None = None,
+        country: str | None = None,
+    ) -> str:
+        return self.itinerary_url
 
 
 @dataclass(frozen=True)
@@ -133,7 +149,25 @@ def test_provider_normalizes_round_trip() -> None:
     assert offers[0].duration_minutes == 240
     assert offers[0].stops == 0
     assert offers[0].airlines == ("EW",)
+    assert offers[0].booking_url == ("https://www.google.com/travel/flights/booking?tfs=TEST")
     assert [leg.departure_airport for leg in offers[0].legs] == ["HAM", "NCE"]
+
+
+def test_provider_rejects_generic_google_flights_url_as_itinerary_handoff() -> None:
+    client = _FakeSearchClient(
+        [_raw_flight("HAM", "NCE", 89.0)],
+        itinerary_url="https://www.google.com/travel/flights?q=HAM+NCE",
+    )
+    provider = FliFlightProvider(search_factory=lambda: client)
+    query = FlightQuery(
+        origin="HAM",
+        destination="NCE",
+        departure_date=date.today() + timedelta(days=10),
+    )
+
+    offers = provider.search(query)
+
+    assert offers[0].booking_url is None
 
 
 def test_provider_expands_each_requested_duration() -> None:
@@ -180,6 +214,7 @@ def test_provider_returns_direct_booking_handoffs_for_the_ranked_offer() -> None
     selected_offer, options = provider.booking_options(query, 0)
 
     assert str(selected_offer.price) == "89.0"
+    assert selected_offer.booking_url == ("https://www.google.com/travel/flights/booking?tfs=TEST")
     assert client.booked_flight is cheap
     assert options[0].vendor_name == "Eurowings"
     assert options[0].is_airline_direct is True

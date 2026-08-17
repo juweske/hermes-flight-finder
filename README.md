@@ -25,7 +25,7 @@ history, deterministic alerts, the Hermes skill bundle, and cron guidance are av
 ### P0: Booking And Trip Planning
 
 - [x] User-approved Google Flights search handoff for selected offers
-- [ ] Preselected Google Flights itinerary handoff with both outbound and return flights already chosen
+- [x] Preselected Google Flights itinerary handoff with both outbound and return flights already chosen
 - [ ] Full vendor-specific booking deep links when supported by a provider
 - [ ] Booking context: bag allowance, fare conditions, refundability, and change policy when available
 - [ ] Configurable itinerary-quality rules and warnings: long or overnight layovers, airport or terminal changes, self-transfers, and impractical total journey times
@@ -115,9 +115,9 @@ pairs and orders the results by price.
 
 Use `booking options` after choosing a numbered specific-date search result, or automatically for the
 top recommendation from a flexible-date search. It reruns the search and
-returns current airline-direct or OTA links for that selection. When a provider supplies only a
-truncated URL, the response instead includes a clickable Google Flights search handoff; it never
-opens a link or makes a purchase. Booking prices and availability can change before the provider
+returns a deterministic Google Flights link for the selected itinerary plus current airline-direct
+or OTA links when available. If an exact itinerary link cannot be constructed, the response uses a
+route-and-date Google Flights search handoff instead. It never opens a link or makes a purchase. Booking prices and availability can change before the provider
 page loads.
 
 ```bash

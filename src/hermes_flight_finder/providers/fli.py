@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from decimal import Decimal
 from typing import Protocol, cast
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from fli.models import (
     Airline,
@@ -60,6 +60,15 @@ class _SearchClient(Protocol):
         currency: str | None = None,
     ) -> object: ...
 
+    def build_flight_booking_url(
+        self,
+        flight: FliFlightResult | tuple[FliFlightResult, ...],
+        *,
+        currency: str | None = None,
+        language: str | None = None,
+        country: str | None = None,
+    ) -> str: ...
+
 
 class _DateSearchClient(Protocol):
     def search(
@@ -96,7 +105,13 @@ class FliFlightProvider:
         if not isinstance(raw_results, list):
             raise ProviderError("Flight provider returned an unexpected response")
         results = cast(list[FliFlightResult | tuple[FliFlightResult, ...]], raw_results)
-        return [self._normalize_itinerary(result) for result in results]
+        return [
+            self._normalize_itinerary(
+                result,
+                booking_url=_itinerary_booking_url(client, result, query.currency),
+            )
+            for result in results
+        ]
 
     def booking_options(
         self, query: FlightQuery, offer_index: int
@@ -115,7 +130,13 @@ class FliFlightProvider:
             raise ProviderError("Flight provider returned an unexpected response")
         ranked = sorted(
             (
-                (raw, self._normalize_itinerary(raw))
+                (
+                    raw,
+                    self._normalize_itinerary(
+                        raw,
+                        booking_url=_itinerary_booking_url(client, raw, query.currency),
+                    ),
+                )
                 for raw in cast(list[FliFlightResult | tuple[FliFlightResult, ...]], raw_results)
             ),
             key=lambda item: _offer_sort_key(item[1]),
@@ -200,6 +221,8 @@ class FliFlightProvider:
     @staticmethod
     def _normalize_itinerary(
         result: FliFlightResult | tuple[FliFlightResult, ...],
+        *,
+        booking_url: str | None = None,
     ) -> FlightOffer:
         parts = result if isinstance(result, tuple) else (result,)
         if not parts:
@@ -229,6 +252,7 @@ class FliFlightProvider:
             duration_minutes=duration_minutes,
             stops=stops,
             legs=tuple(legs),
+            booking_url=booking_url,
         )
 
     @staticmethod
@@ -263,6 +287,22 @@ def _usable_url(value: str | None, *, require_query: bool = False) -> str | None
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
     if require_query and not parsed.query:
+        return None
+    return value
+
+
+def _itinerary_booking_url(
+    client: _SearchClient,
+    result: FliFlightResult | tuple[FliFlightResult, ...],
+    currency: str,
+) -> str | None:
+    value = client.build_flight_booking_url(result, currency=currency)
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or parsed.hostname not in {"google.com", "www.google.com"}:
+        return None
+    if parsed.path.rstrip("/") != "/travel/flights/booking":
+        return None
+    if not parse_qs(parsed.query).get("tfs", [""])[0]:
         return None
     return value
 

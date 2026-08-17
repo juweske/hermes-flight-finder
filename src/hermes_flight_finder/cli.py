@@ -249,16 +249,23 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
         _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
         return 2
 
+    google_flights_search_url = _google_flights_search_url(query)
+    booking_handoff_url = selected_offer.booking_url or google_flights_search_url
     payload: dict[str, object] = {
         "ok": True,
         "selected_offer": _offer_as_dict(selected_offer),
-        "google_flights_search_url": _google_flights_search_url(query),
+        "booking_handoff_url": booking_handoff_url,
+        "google_flights_search_url": google_flights_search_url,
         "booking_options": [_booking_option_as_dict(option) for option in options],
     }
     if arguments.json_output:
         _write_json(payload)
     else:
-        _write_human_booking_options(options, _google_flights_search_url(query))
+        _write_human_booking_options(
+            options,
+            booking_handoff_url,
+            google_flights_search_url,
+        )
     return 0
 
 
@@ -587,8 +594,11 @@ def _json_default(value: object) -> str:
 
 
 def _write_human_booking_options(
-    options: list[BookingOption], google_flights_search_url: str
+    options: list[BookingOption],
+    booking_handoff_url: str,
+    google_flights_search_url: str,
 ) -> None:
+    print(f"Selected itinerary: {booking_handoff_url}")
     if not options:
         print("No direct booking links are currently available for this offer.")
     for index, option in enumerate(options, start=1):
@@ -604,7 +614,8 @@ def _write_human_booking_options(
             print(f"   Fare: {option.fare_name}")
         if option.handoff_url:
             print(f"   {option.handoff_url}")
-    print(f"Google Flights search: {google_flights_search_url}")
+    if booking_handoff_url != google_flights_search_url:
+        print(f"Google Flights search fallback: {google_flights_search_url}")
 
 
 def _write_human_offers(offers: list[FlightOffer]) -> None:
@@ -622,6 +633,8 @@ def _write_human_offers(offers: list[FlightOffer]) -> None:
         print(f"{index}. {price} - {first_leg.departure_airport} -> {last_leg.arrival_airport}")
         print(f"   {first_leg.departure_at.date()} -> {last_leg.arrival_at.date()}")
         print(f"   {stops}; {', '.join(offer.airlines)}")
+        if offer.booking_url:
+            print(f"   Book: {offer.booking_url}")
 
 
 def _write_human_date_offers(offers: list[FlexibleDateOffer]) -> None:

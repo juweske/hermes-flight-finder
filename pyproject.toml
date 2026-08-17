@@ -19,7 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "flights>=0.9.0",
+    "flights @ git+https://github.com/punitarani/fli.git@121d34fea056dc513258958c4262cb5a4cc033c1",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +31,9 @@ dev = [
 
 [project.scripts]
 hermes-flights = "hermes_flight_finder.cli:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hermes_flight_finder"]

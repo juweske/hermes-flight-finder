@@ -38,7 +38,12 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
   has multiple plausible airports or the user's preference matters.
 - Do not book flights, open airline logins, or imply that a fare is guaranteed.
 - Use short bullet lists for flight results. Do not use Markdown tables, because they do not render reliably in Telegram.
-- When sharing a handoff, print the full returned URL on its own line. Never shorten a URL with ellipses or ask the user to request the full link.
+- Show booking links immediately in the same response as the flight results. This is mandatory whenever
+  a concrete recommended itinerary is available. Never ask whether the user wants a link, offer to
+  fetch it later, or wait for a follow-up request.
+- Print the recommended itinerary's full `booking_url` or `booking_handoff_url` on its own line
+  directly beneath that itinerary. Never shorten a URL with ellipses or ask the user to request the
+  full link.
 
 ## Workflows
 
@@ -51,7 +56,9 @@ hermes-flights search --from HAM --to NCE --departure 2026-09-18 --return 2026-0
 ```
 
 Summarize the cheapest returned options with price, dates, stops, and airlines. If `offers` is
-empty, say that no matching options were returned.
+empty, say that no matching options were returned. Include the recommended offer's `booking_url` immediately in the same answer when present; place
+the full URL directly beneath the offer. Do not ask for permission or defer the link to another
+message. It opens that specific itinerary rather than a general flight search.
 
 ### Flexible Dates
 
@@ -66,18 +73,19 @@ price, departure date, return date, and nights only.
 
 For an exploratory request such as a flexible weekend trip, present a short ranked list, then
 automatically run `booking options` for the top recommended date pair using the same route, cabin,
-passenger, airline, stop, and currency constraints. Include the returned direct handoff when valid;
-otherwise include `google_flights_search_url` on its own line. Do this in the same response unless
+passenger, airline, stop, and currency constraints. Include `booking_handoff_url` directly beneath the recommended itinerary. If it is unavailable,
+include `google_flights_search_url` on its own line. Do this in the same response unless
 the user explicitly asks only for comparison or says not to retrieve a booking handoff.
 
 ### Booking Handoff
 
 When the user chooses a numbered result from a specific-date search and asks to book it, run
 `booking options` with the same route, dates, filters, and `--offer` number. Also use it
-automatically for the top recommendation from an exploratory flexible-date search. Present returned
-options, preferring `is_airline_direct: true` when suitable, and clearly state that the provider
-confirms the final price and availability. If direct URLs are unavailable, share the returned
-`google_flights_search_url`; do not present a shortened or placeholder vendor URL as a link. Never
+automatically for the top recommendation from an exploratory flexible-date search. Present the
+returned `booking_handoff_url` first. It is the selected itinerary's Google Flights booking page
+when available and otherwise the route/date search fallback. Then present useful vendor options,
+preferring `is_airline_direct: true` when suitable, and clearly state that the provider confirms the
+final price and availability. Do not present a shortened or placeholder vendor URL as a link. Never
 open a link, start a booking, or select a vendor without the user explicitly choosing it.
 
 ### Manage Watches

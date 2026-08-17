@@ -143,6 +143,7 @@ class FlightOffer:
     duration_minutes: int
     stops: int
     legs: tuple[FlightLeg, ...]
+    booking_url: str | None = None
 
     @property
     def airlines(self) -> tuple[str, ...]:
