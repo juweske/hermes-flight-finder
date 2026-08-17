@@ -112,7 +112,8 @@ pairs and orders the results by price.
 
 ## Booking Handoff
 
-Use `booking options` after choosing a numbered specific-date search result. It reruns the search and
+Use `booking options` after choosing a numbered specific-date search result, or automatically for the
+top recommendation from a flexible-date search. It reruns the search and
 returns current airline-direct or OTA links for that selection. When a provider supplies only a
 truncated URL, the response instead includes a clickable Google Flights search handoff; it never
 opens a link or makes a purchase. Booking prices and availability can change before the provider
