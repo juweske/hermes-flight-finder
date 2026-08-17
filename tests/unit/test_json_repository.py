@@ -1,10 +1,11 @@
+import json
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from hermes_flight_finder.models import MaxStops, Watch
+from hermes_flight_finder.models import MaxStops, PriceObservation, Watch
 from hermes_flight_finder.storage import JsonWatchRepository, StateCorruptError
 
 
@@ -50,3 +51,47 @@ def test_repository_reports_corrupt_state(tmp_path: Path) -> None:
 
     with pytest.raises(StateCorruptError, match="corrupt"):
         JsonWatchRepository(tmp_path).list()
+
+
+def test_repository_preserves_observation_source(tmp_path: Path) -> None:
+    repository = JsonWatchRepository(tmp_path)
+    observation = PriceObservation(
+        checked_at=datetime(2026, 8, 15, 12, 0, tzinfo=UTC),
+        watch_id="ham-nce-test",
+        price=Decimal("89"),
+        currency="EUR",
+        departure_date=date(2026, 9, 18),
+        return_date=date(2026, 9, 21),
+        source="serpapi",
+    )
+
+    repository.record_observation(observation)
+
+    assert JsonWatchRepository(tmp_path).list_observations(observation.watch_id) == [observation]
+
+
+def test_repository_defaults_legacy_observation_source_to_fli(tmp_path: Path) -> None:
+    (tmp_path / "history.json").write_text(
+        json.dumps(
+            {
+                "observations": [
+                    {
+                        "checked_at": "2026-08-15T12:00:00+00:00",
+                        "watch_id": "ham-nce-test",
+                        "price": "89",
+                        "currency": "EUR",
+                        "departure_date": "2026-09-18",
+                        "return_date": "2026-09-21",
+                        "airlines": [],
+                        "stops": 0,
+                    }
+                ],
+                "alerts": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    observations = JsonWatchRepository(tmp_path).list_observations("ham-nce-test")
+
+    assert observations[0].source == "fli"

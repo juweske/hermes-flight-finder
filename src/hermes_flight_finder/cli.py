@@ -18,6 +18,7 @@ from hermes_flight_finder.models import (
     FlightOffer,
     FlightQuery,
     MaxStops,
+    PriceObservation,
     Watch,
     new_watch_id,
 )
@@ -91,6 +92,10 @@ def build_parser() -> argparse.ArgumentParser:
     watch_check = watch_subcommands.add_parser("check", help="Check all flight watches.")
     watch_check.add_argument("--json", action="store_true", dest="json_output")
 
+    watch_history = watch_subcommands.add_parser("history", help="Show locally recorded prices.")
+    watch_history.add_argument("watch_id")
+    watch_history.add_argument("--json", action="store_true", dest="json_output")
+
     return parser
 
 
@@ -115,6 +120,7 @@ def main(
         "list",
         "show",
         "remove",
+        "history",
     }:
         return _run_watch(arguments, repository or JsonWatchRepository())
     if arguments.command == "watch" and arguments.watch_command == "check":
@@ -246,6 +252,8 @@ def _run_watch(arguments: argparse.Namespace, repository: WatchRepository) -> in
         if arguments.watch_command == "show":
             _write_watch_result(arguments.json_output, watch, "Flight watch")
             return 0
+        if arguments.watch_command == "history":
+            return _run_watch_history(arguments, watch, repository.list_observations(watch.id))
         if arguments.watch_command == "remove":
             repository.delete(watch.id)
             if arguments.json_output:
@@ -260,6 +268,24 @@ def _run_watch(arguments: argparse.Namespace, repository: WatchRepository) -> in
         _write_json({"ok": False, "error": {"code": "state_corrupt", "message": str(error)}})
         return 4
     raise AssertionError("Unhandled watch command")
+
+
+def _run_watch_history(
+    arguments: argparse.Namespace, watch: Watch, observations: list[PriceObservation]
+) -> int:
+    """Render local price observations without contacting a provider."""
+    ordered = sorted(observations, key=lambda item: item.checked_at)
+    payload: dict[str, object] = {
+        "ok": True,
+        "watch": _watch_as_dict(watch),
+        "summary": _history_summary(ordered),
+        "observations": [_observation_as_dict(item) for item in ordered],
+    }
+    if arguments.json_output:
+        _write_json(payload)
+    else:
+        _write_human_history(watch, ordered)
+    return 0
 
 
 def _run_watch_check(
@@ -384,6 +410,44 @@ def _watch_as_dict(watch: Watch) -> dict[str, object]:
     }
 
 
+def _observation_as_dict(observation: PriceObservation) -> dict[str, object]:
+    return {
+        "checked_at": observation.checked_at.isoformat(),
+        "price": str(observation.price),
+        "currency": observation.currency,
+        "departure_date": observation.departure_date.isoformat(),
+        "return_date": observation.return_date.isoformat(),
+        "airlines": list(observation.airlines),
+        "stops": observation.stops,
+        "source": observation.source,
+    }
+
+
+def _history_summary(observations: list[PriceObservation]) -> dict[str, object]:
+    if not observations:
+        return {
+            "observation_count": 0,
+            "tracking_started_at": None,
+            "latest_price": None,
+            "lowest_price": None,
+            "lowest_observed_at": None,
+            "latest_is_lowest_since_tracking_started": None,
+            "sources": [],
+        }
+    latest = observations[-1]
+    lowest = min(observations, key=lambda item: item.price)
+    return {
+        "observation_count": len(observations),
+        "tracking_started_at": observations[0].checked_at,
+        "latest_price": str(latest.price),
+        "currency": latest.currency,
+        "lowest_price": str(lowest.price),
+        "lowest_observed_at": lowest.checked_at,
+        "latest_is_lowest_since_tracking_started": latest.price == lowest.price,
+        "sources": sorted({item.source for item in observations}),
+    }
+
+
 def _deal_as_dict(deal: object) -> dict[str, object]:
     from hermes_flight_finder.models import Deal
 
@@ -453,6 +517,25 @@ def _write_watch_result(json_output: bool, watch: Watch, title: str) -> None:
         print(f"{title}: {watch.id}")
         print(f"{watch.origin} -> {watch.destination}; {watch.start_date} to {watch.end_date}")
         print(f"{watch.min_nights}-{watch.max_nights} nights; {watch.currency}")
+
+
+def _write_human_history(watch: Watch, observations: list[PriceObservation]) -> None:
+    if not observations:
+        print(f"No price observations recorded for {watch.id}.")
+        return
+    latest = observations[-1]
+    lowest = min(observations, key=lambda item: item.price)
+    sources = ", ".join(sorted({item.source for item in observations}))
+    print(f"History for {watch.id}\n")
+    print(
+        "Latest: "
+        f"{latest.currency} {latest.price} ({latest.departure_date} to {latest.return_date})"
+    )
+    print(
+        f"Lowest since tracking started: {lowest.currency} {lowest.price} "
+        f"({lowest.departure_date} to {lowest.return_date})"
+    )
+    print(f"Observations: {len(observations)}; sources: {sources}")
 
 
 def _write_human_watches(watches: list[Watch]) -> None:

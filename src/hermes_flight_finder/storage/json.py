@@ -218,6 +218,14 @@ def _departure_window_from_raw(value: object) -> tuple[int, int] | None:
     return (cast(int, hours[0]), cast(int, hours[1]))
 
 
+def _optional_str(value: object, default: str) -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ValueError("source must be a string")
+    return value
+
+
 def _optional_decimal(value: object) -> Decimal | None:
     if value is None:
         return None
@@ -248,6 +256,7 @@ def _observation_as_dict(item: PriceObservation) -> dict[str, object]:
         "return_date": item.return_date.isoformat(),
         "airlines": list(item.airlines),
         "stops": item.stops,
+        "source": item.source,
     }
 
 
@@ -264,6 +273,7 @@ def _observation_from_dict(raw: dict[str, object]) -> PriceObservation:
         datetime.fromisoformat(_required_str(raw, "return_date")).date(),
         tuple(_required_str_list(raw, "airlines")),
         stops,
+        _optional_str(raw.get("source"), "fli"),
     )
 
 

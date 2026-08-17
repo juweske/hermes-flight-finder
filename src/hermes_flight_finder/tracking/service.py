@@ -34,6 +34,7 @@ class WatchCheckService:
                 departure_date=offer.departure_date,
                 return_date=offer.return_date,
                 stops=0 if watch.max_stops.name == "NON_STOP" else None,
+                source="fli",
             )
             deal = _evaluate(
                 watch,

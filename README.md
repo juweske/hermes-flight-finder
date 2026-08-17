@@ -18,13 +18,14 @@ history, deterministic alerts, the Hermes skill bundle, and cron guidance are av
 
 - [x] Specific-date and flexible-date flight search
 - [x] Local JSON watches, observations, and deterministic target-price or price-drop alerts
+- [x] `watch history` with lowest-price-since-tracking summaries
 - [x] Hermes skill, JSON-first CLI contract, and scheduled watch-check guidance
 - [x] Local-first storage with no account, analytics, or API key
 
 ### P0: Price Intelligence
 
 - [ ] Historic price tracking with all-time and rolling low points, trend, volatility, and fare context
-- [ ] `watch history` output and a flexible-date price grid for comparing possible trips
+- [ ] Flexible-date price grid for comparing possible trips
 - [ ] Explainable deal scoring based on price, stops, duration, time, and distance from historical lows
 - [ ] Nearby and multiple-airport searches, plus watch health and stale-data status
 
@@ -118,6 +119,7 @@ hermes-flights watch add \
 
 hermes-flights watch list --json
 hermes-flights watch show <watch-id> --json
+hermes-flights watch history <watch-id> --json
 hermes-flights watch remove <watch-id> --json
 ```
 
@@ -131,6 +133,11 @@ another local directory.
 pair, and returns alerts only when a target price is met or a configured percentage drop occurs.
 The first check establishes a baseline unless its target price is already met; repeated alerts for
 the same price and dates are suppressed.
+
+`hermes-flights watch history <watch-id> --json` returns each locally recorded observation and a
+summary with the latest price, the lowest price since tracking began, and whether the latest check
+is that low. Current observations are marked with `source: "fli"`. A future historical provider can
+add earlier observations with its own source without changing this command or existing local data.
 
 ## Hermes Skill
 

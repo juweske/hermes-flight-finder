@@ -245,6 +245,7 @@ class PriceObservation:
     return_date: date
     airlines: tuple[str, ...] = ()
     stops: int | None = None
+    source: str = "fli"
 
     def __post_init__(self) -> None:
         if self.price < 0:
@@ -253,6 +254,8 @@ class PriceObservation:
             raise ValueError("observation return date must be after departure date")
         if self.stops is not None and self.stops < 0:
             raise ValueError("observation stops must not be negative")
+        if not self.source:
+            raise ValueError("observation source must not be empty")
 
 
 @dataclass(frozen=True, slots=True)

@@ -72,8 +72,10 @@ hermes-flights watch add --from HAM --to NCE --start 2026-08-20 --end 2026-10-31
 ```
 
 Use `watch list --json`, `watch show <id> --json`, and `watch remove <id> --json` for lifecycle
-requests. After adding a watch, retain the returned `watch.id` when the user refers to it later in
-the same conversation.
+requests. Use `watch history <id> --json` when the user asks whether a current price is the lowest
+since tracking started. Report the returned summary and do not imply history from before the watch
+was created. After adding a watch, retain the returned `watch.id` when the user refers to it later
+in the same conversation.
 
 ### Check Watches
 

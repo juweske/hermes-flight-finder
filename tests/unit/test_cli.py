@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -13,6 +13,8 @@ from hermes_flight_finder.models import (
     FlightLeg,
     FlightOffer,
     FlightQuery,
+    PriceObservation,
+    Watch,
 )
 from hermes_flight_finder.storage import JsonWatchRepository
 
@@ -176,3 +178,55 @@ def test_watch_lifecycle_writes_stable_json(capsys: CaptureFixture[str], tmp_pat
     remove_exit_code = main(["watch", "remove", "ham-nce-weekend", "--json"], repository=repository)
     assert remove_exit_code == 0
     assert json.loads(capsys.readouterr().out)["removed_id"] == "ham-nce-weekend"
+
+
+def test_watch_history_reports_lowest_price_since_tracking_started(
+    capsys: CaptureFixture[str], tmp_path: Path
+) -> None:
+    repository = JsonWatchRepository(tmp_path)
+    watch = Watch(
+        id="ham-nce-history",
+        origin="HAM",
+        destination="NCE",
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 10, 1),
+        min_nights=2,
+        max_nights=5,
+    )
+    repository.save(watch)
+    repository.record_observation(
+        PriceObservation(
+            checked_at=datetime(2026, 8, 15, 9, 0, tzinfo=UTC),
+            watch_id=watch.id,
+            price=Decimal("120"),
+            currency="EUR",
+            departure_date=date(2026, 9, 18),
+            return_date=date(2026, 9, 21),
+        )
+    )
+    repository.record_observation(
+        PriceObservation(
+            checked_at=datetime(2026, 8, 16, 9, 0, tzinfo=UTC),
+            watch_id=watch.id,
+            price=Decimal("95"),
+            currency="EUR",
+            departure_date=date(2026, 9, 18),
+            return_date=date(2026, 9, 21),
+        )
+    )
+
+    exit_code = main(["watch", "history", watch.id, "--json"], repository=repository)
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"] == {
+        "observation_count": 2,
+        "tracking_started_at": "2026-08-15T09:00:00+00:00",
+        "latest_price": "95",
+        "currency": "EUR",
+        "lowest_price": "95",
+        "lowest_observed_at": "2026-08-16T09:00:00+00:00",
+        "latest_is_lowest_since_tracking_started": True,
+        "sources": ["fli"],
+    }
+    assert payload["observations"][0]["source"] == "fli"
