@@ -24,7 +24,8 @@ history, deterministic alerts, the Hermes skill bundle, and cron guidance are av
 
 ### P0: Booking And Trip Planning
 
-- [x] Explicit, user-approved booking handoff links to airline or OTA providers for selected offers
+- [x] User-approved Google Flights search handoff for selected offers
+- [ ] Full vendor-specific booking deep links when supported by a provider
 - [ ] Booking context: bag allowance, fare conditions, refundability, and change policy when available
 - [ ] Booking warnings for long layovers and self-transfers
 - [ ] Multi-airport, open-jaw, and road-trip itineraries, such as Hamburg to Nice and Marseille to Berlin
@@ -112,8 +113,10 @@ pairs and orders the results by price.
 ## Booking Handoff
 
 Use `booking options` after choosing a numbered specific-date search result. It reruns the search and
-returns current airline-direct or OTA links for that selection; it never opens a link or makes a
-purchase. Booking prices and availability can change before the provider page loads.
+returns current airline-direct or OTA links for that selection. When a provider supplies only a
+truncated URL, the response instead includes a clickable Google Flights search handoff; it never
+opens a link or makes a purchase. Booking prices and availability can change before the provider
+page loads.
 
 ```bash
 hermes-flights booking options \

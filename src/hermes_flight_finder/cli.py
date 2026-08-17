@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from hermes_flight_finder.config import get_data_dir
 from hermes_flight_finder.models import (
@@ -251,12 +252,13 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
     payload: dict[str, object] = {
         "ok": True,
         "selected_offer": _offer_as_dict(selected_offer),
+        "google_flights_search_url": _google_flights_search_url(query),
         "booking_options": [_booking_option_as_dict(option) for option in options],
     }
     if arguments.json_output:
         _write_json(payload)
     else:
-        _write_human_booking_options(options)
+        _write_human_booking_options(options, _google_flights_search_url(query))
     return 0
 
 
@@ -460,6 +462,17 @@ def _offer_as_dict(offer: FlightOffer) -> dict[str, object]:
     return payload
 
 
+def _google_flights_search_url(query: FlightQuery) -> str:
+    search_text = (
+        f"Flights to {query.destination} from {query.origin} on {query.departure_date.isoformat()}"
+    )
+    if query.return_date is not None:
+        search_text += f" returning {query.return_date.isoformat()}"
+    return "https://www.google.com/travel/flights?" + urlencode(
+        {"hl": "en", "curr": query.currency, "q": search_text}
+    )
+
+
 def _booking_option_as_dict(option: BookingOption) -> dict[str, object]:
     return {
         "vendor_name": option.vendor_name,
@@ -573,10 +586,11 @@ def _json_default(value: object) -> str:
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
-def _write_human_booking_options(options: list[BookingOption]) -> None:
+def _write_human_booking_options(
+    options: list[BookingOption], google_flights_search_url: str
+) -> None:
     if not options:
-        print("No booking links are currently available for this offer.")
-        return
+        print("No direct booking links are currently available for this offer.")
     for index, option in enumerate(options, start=1):
         vendor = option.vendor_name or "Unknown vendor"
         direct = "airline direct" if option.is_airline_direct else "travel seller"
@@ -588,7 +602,9 @@ def _write_human_booking_options(options: list[BookingOption]) -> None:
         print(f"{index}. {vendor} ({direct}) - {price}")
         if option.fare_name:
             print(f"   Fare: {option.fare_name}")
-        print(f"   {option.handoff_url}")
+        if option.handoff_url:
+            print(f"   {option.handoff_url}")
+    print(f"Google Flights search: {google_flights_search_url}")
 
 
 def _write_human_offers(offers: list[FlightOffer]) -> None:

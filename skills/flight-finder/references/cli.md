@@ -26,9 +26,9 @@ hermes-flights booking options --from IATA --to IATA --departure YYYY-MM-DD [--r
 ```
 
 The command reruns the exact search and returns `selected_offer` plus current `booking_options`.
-Each option includes vendor details, refreshed price when available, direct and Google click-through
-URLs, and `handoff_url` which prefers the direct vendor link. The CLI never opens a URL or completes
-a booking.
+Each option includes vendor details, refreshed price when available, and full direct or Google
+click-through URLs when supplied by the provider. `google_flights_search_url` is always a valid
+fallback handoff. The CLI never opens a URL or completes a booking.
 
 ## Watches
 

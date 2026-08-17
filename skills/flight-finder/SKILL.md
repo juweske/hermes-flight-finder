@@ -67,7 +67,9 @@ price, departure date, return date, and nights only.
 When the user chooses a numbered result from a specific-date search and asks to book it, run
 `booking options` with the same route, dates, filters, and `--offer` number. Present returned
 options, preferring `is_airline_direct: true` when suitable, and clearly state that the provider
-confirms the final price and availability. Never open a link, start a booking, or select a vendor
+confirms the final price and availability. If direct URLs are unavailable, share the returned
+`google_flights_search_url`; do not present a shortened or placeholder vendor URL as a link. Never
+open a link, start a booking, or select a vendor
 without the user explicitly choosing it.
 
 ### Manage Watches

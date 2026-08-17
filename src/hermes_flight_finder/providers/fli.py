@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from decimal import Decimal
 from typing import Protocol, cast
+from urllib.parse import urlsplit
 
 from fli.models import (
     Airline,
@@ -238,8 +239,8 @@ class FliFlightProvider:
             price=Decimal(str(raw_option.price)) if raw_option.price is not None else None,
             currency=raw_option.currency,
             fare_name=raw_option.fare_name,
-            booking_url=raw_option.booking_url,
-            google_click_url=raw_option.google_click_url,
+            booking_url=_usable_url(raw_option.booking_url),
+            google_click_url=_usable_url(raw_option.google_click_url, require_query=True),
         )
 
     @staticmethod
@@ -253,6 +254,17 @@ class FliFlightProvider:
             price=Decimal(str(raw_price.price)),
             currency=raw_price.currency,
         )
+
+
+def _usable_url(value: str | None, *, require_query: bool = False) -> str | None:
+    if not value or "..." in value:
+        return None
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    if require_query and not parsed.query:
+        return None
+    return value
 
 
 def _offer_sort_key(offer: FlightOffer) -> tuple[bool, Decimal, int]:

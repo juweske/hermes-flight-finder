@@ -184,3 +184,30 @@ def test_provider_returns_direct_booking_handoffs_for_the_ranked_offer() -> None
     assert options[0].vendor_name == "Eurowings"
     assert options[0].is_airline_direct is True
     assert options[0].handoff_url == "https://book.example.test/eurowings"
+
+
+def test_provider_discards_truncated_booking_placeholders() -> None:
+    raw_flight = _raw_flight("HAM", "NCE", 89.0)
+    placeholder = _RawBookingOption(
+        vendor_name="Eurowings",
+        is_airline_direct=True,
+        price=89.0,
+        currency="EUR",
+        fare_name=None,
+        booking_url="www.eurowings.com/...",
+        google_click_url="https://www.google.com/travel/clk/f",
+    )
+    client = _FakeSearchClient([raw_flight], [placeholder])
+    provider = FliFlightProvider(search_factory=lambda: client)
+    query = FlightQuery(
+        origin="HAM",
+        destination="NCE",
+        departure_date=date.today() + timedelta(days=10),
+        currency="EUR",
+    )
+
+    _, options = provider.booking_options(query, 0)
+
+    assert options[0].booking_url is None
+    assert options[0].google_click_url is None
+    assert options[0].handoff_url is None

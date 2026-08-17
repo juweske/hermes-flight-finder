@@ -275,6 +275,10 @@ def test_booking_options_returns_current_vendor_handoff(capsys: CaptureFixture[s
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["selected_offer"]["price"] == "89"
+    assert payload["google_flights_search_url"] == (
+        "https://www.google.com/travel/flights?hl=en&curr=EUR&"
+        "q=Flights+to+NCE+from+HAM+on+2026-09-18+returning+2026-09-21"
+    )
     assert payload["booking_options"] == [
         {
             "vendor_name": "Example Air",
