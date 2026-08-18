@@ -17,6 +17,7 @@ from hermes_flight_finder.models import (
     PriceObservation,
     Watch,
 )
+from hermes_flight_finder.providers import BookingOptionsUnavailable
 from hermes_flight_finder.storage import JsonWatchRepository
 
 
@@ -72,6 +73,16 @@ class _FakeProvider:
                 currency="EUR",
             )
         ]
+
+
+class _UnavailableBookingProvider(_FakeProvider):
+    def booking_options(
+        self, query: FlightQuery, offer_index: int
+    ) -> tuple[FlightOffer, list[BookingOption]]:
+        raise BookingOptionsUnavailable(
+            "Vendor booking options are temporarily unavailable",
+            self.search(query)[offer_index],
+        )
 
 
 def test_help_exits_successfully(capsys: CaptureFixture[str]) -> None:
@@ -295,3 +306,37 @@ def test_booking_options_returns_current_vendor_handoff(capsys: CaptureFixture[s
             "handoff_url": "https://book.example.test/offer",
         }
     ]
+
+
+def test_booking_options_keeps_exact_handoff_when_vendor_options_fail(
+    capsys: CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [
+            "booking",
+            "options",
+            "--from",
+            "HAM",
+            "--to",
+            "NCE",
+            "--departure",
+            "2026-09-18",
+            "--return",
+            "2026-09-21",
+            "--offer",
+            "1",
+            "--json",
+        ],
+        provider=_UnavailableBookingProvider(),
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["booking_handoff_url"] == (
+        "https://www.google.com/travel/flights/booking?tfs=TEST"
+    )
+    assert payload["booking_options"] == []
+    assert payload["booking_options_warning"] == (
+        "Vendor booking options are temporarily unavailable"
+    )

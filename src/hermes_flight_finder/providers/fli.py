@@ -40,7 +40,7 @@ from hermes_flight_finder.models import (
     FlightOffer,
     FlightQuery,
 )
-from hermes_flight_finder.providers.base import ProviderError
+from hermes_flight_finder.providers.base import BookingOptionsUnavailable, ProviderError
 
 
 class _SearchClient(Protocol):
@@ -148,8 +148,16 @@ class FliFlightProvider:
         try:
             raw_options = client.get_booking_options(raw_offer, filters, currency=query.currency)
         except Exception as error:
+            if selected_offer.booking_url:
+                raise BookingOptionsUnavailable(
+                    "Vendor booking options are temporarily unavailable", selected_offer
+                ) from error
             raise ProviderError("Flight provider could not retrieve booking options") from error
         if not isinstance(raw_options, list):
+            if selected_offer.booking_url:
+                raise BookingOptionsUnavailable(
+                    "Vendor booking options returned an unexpected response", selected_offer
+                )
             raise ProviderError("Flight provider returned unexpected booking options")
         return selected_offer, [
             self._normalize_booking_option(option)
@@ -229,23 +237,18 @@ class FliFlightProvider:
             raise ProviderError("Flight provider returned an empty itinerary")
 
         legs: list[FlightLeg] = []
-        prices: list[Decimal] = []
-        currencies: set[str] = set()
+        price_part = parts[0]
         duration_minutes = 0
         stops = 0
         for part in parts:
             legs.extend(_normalize_leg(leg) for leg in part.legs)
             duration_minutes += part.duration
             stops += part.stops
-            raw_price = part.price
-            if raw_price is not None:
-                prices.append(Decimal(str(raw_price)))
-            raw_currency = part.currency
-            if isinstance(raw_currency, str):
-                currencies.add(raw_currency)
 
-        currency = currencies.pop() if len(currencies) == 1 else None
-        price = sum(prices, Decimal()) if len(prices) == len(parts) else None
+        raw_price = price_part.price
+        price = Decimal(str(raw_price)) if raw_price is not None else None
+        raw_currency = price_part.currency
+        currency = raw_currency if isinstance(raw_currency, str) else None
         return FlightOffer(
             price=price,
             currency=currency,

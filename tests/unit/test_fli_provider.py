@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Protocol, cast
 
+import pytest
+
 from hermes_flight_finder.models import FlexibleSearchQuery, FlightQuery
+from hermes_flight_finder.providers import BookingOptionsUnavailable
 from hermes_flight_finder.providers.fli import FliFlightProvider
 
 
@@ -66,6 +69,8 @@ class _FakeSearchClient:
     ) -> object:
         self.booked_flight = flight
         self.currency = currency
+        if isinstance(self.booking_options, Exception):
+            raise self.booking_options
         return self.booking_options
 
     def build_flight_booking_url(
@@ -128,8 +133,8 @@ def _raw_flight(origin: str, destination: str, price: float) -> _RawFlight:
 
 
 def test_provider_normalizes_round_trip() -> None:
-    outbound = _raw_flight("HAM", "NCE", 45.0)
-    inbound = _raw_flight("NCE", "HAM", 44.0)
+    outbound = _raw_flight("HAM", "NCE", 89.0)
+    inbound = _raw_flight("NCE", "HAM", 89.0)
     client = _FakeSearchClient([(outbound, inbound)])
     provider = FliFlightProvider(search_factory=lambda: client)
     query = FlightQuery(
@@ -219,6 +224,26 @@ def test_provider_returns_direct_booking_handoffs_for_the_ranked_offer() -> None
     assert options[0].vendor_name == "Eurowings"
     assert options[0].is_airline_direct is True
     assert options[0].handoff_url == "https://book.example.test/eurowings"
+
+
+def test_provider_preserves_exact_handoff_when_vendor_options_fail() -> None:
+    raw_flight = _raw_flight("HAM", "NCE", 89.0)
+    client = _FakeSearchClient([raw_flight], RuntimeError("temporary vendor failure"))
+    provider = FliFlightProvider(search_factory=lambda: client)
+    query = FlightQuery(
+        origin="HAM",
+        destination="NCE",
+        departure_date=date.today() + timedelta(days=10),
+        currency="EUR",
+    )
+
+    with pytest.raises(BookingOptionsUnavailable) as exc_info:
+        provider.booking_options(query, 0)
+
+    assert str(exc_info.value.selected_offer.price) == "89.0"
+    assert exc_info.value.selected_offer.booking_url == (
+        "https://www.google.com/travel/flights/booking?tfs=TEST"
+    )
 
 
 def test_provider_discards_truncated_booking_placeholders() -> None:

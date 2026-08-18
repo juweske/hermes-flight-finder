@@ -17,6 +17,14 @@ class ProviderError(Exception):
     """A flight provider could not complete a request safely."""
 
 
+class BookingOptionsUnavailable(ProviderError):
+    """Vendor options failed after an exact itinerary handoff was created."""
+
+    def __init__(self, message: str, selected_offer: FlightOffer) -> None:
+        super().__init__(message)
+        self.selected_offer = selected_offer
+
+
 @runtime_checkable
 class BookingProvider(Protocol):
     """Retrieve current booking handoffs for a selected search result."""

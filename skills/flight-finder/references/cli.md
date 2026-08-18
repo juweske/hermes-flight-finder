@@ -28,7 +28,9 @@ hermes-flights booking options --from IATA --to IATA --departure YYYY-MM-DD [--r
 The command reruns the exact search and returns `selected_offer`, current `booking_options`, and a
 `booking_handoff_url`. When Fli can construct a deterministic `tfs` URL, the handoff opens the
 selected itinerary's Google Flights booking page; otherwise it uses `google_flights_search_url` as
-the fallback.
+the fallback. If vendor-option retrieval fails after an exact itinerary was selected,
+the command still returns `ok: true`, the handoff, an empty `booking_options` list, and a
+`booking_options_warning`.
 
 Each option includes vendor details, refreshed price when available, and full direct or Google
 click-through URLs when supplied by the provider. `google_flights_search_url` is always a valid

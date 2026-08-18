@@ -32,6 +32,9 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
 - Never invent availability, fares, routes, dates, airlines, stops, watch status, or price
   history. Only report facts returned by `hermes-flights`.
 - Treat `{ "ok": false }` as a failure, not an empty search. Explain the returned error briefly.
+- Treat `booking_options_warning` with `{ "ok": true }` as degraded success. Show the returned
+  `booking_handoff_url` immediately and briefly note that vendor-specific options are unavailable;
+  do not report the entire booking handoff as failed.
 - Preserve the user's requested currency, passenger count, cabin, airline preference, direct
   requirement, and departure window when they are specified.
 - Use IATA airport codes. Resolve unambiguous city names to their primary airport; ask when a city

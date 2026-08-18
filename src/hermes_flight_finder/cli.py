@@ -25,6 +25,7 @@ from hermes_flight_finder.models import (
     new_watch_id,
 )
 from hermes_flight_finder.providers import (
+    BookingOptionsUnavailable,
     BookingProvider,
     FliFlightProvider,
     FlightProvider,
@@ -215,6 +216,8 @@ def _run_search(arguments: argparse.Namespace, provider: FlightProvider) -> int:
 
 def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int:
     """Return current provider links without opening a browser or purchasing anything."""
+    booking_options_warning: str | None = None
+    query: FlightQuery | None = None
     if not isinstance(provider, BookingProvider):
         _write_json(
             {
@@ -245,10 +248,15 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
     except ValueError as error:
         _write_json({"ok": False, "error": {"code": "invalid_request", "message": str(error)}})
         return 2
+    except BookingOptionsUnavailable as error:
+        selected_offer = error.selected_offer
+        options = []
+        booking_options_warning = str(error)
     except ProviderError as error:
         _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
         return 2
 
+    assert query is not None
     google_flights_search_url = _google_flights_search_url(query)
     booking_handoff_url = selected_offer.booking_url or google_flights_search_url
     payload: dict[str, object] = {
@@ -258,6 +266,8 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
         "google_flights_search_url": google_flights_search_url,
         "booking_options": [_booking_option_as_dict(option) for option in options],
     }
+    if booking_options_warning:
+        payload["booking_options_warning"] = booking_options_warning
     if arguments.json_output:
         _write_json(payload)
     else:
@@ -265,6 +275,7 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
             options,
             booking_handoff_url,
             google_flights_search_url,
+            booking_options_warning,
         )
     return 0
 
@@ -597,8 +608,11 @@ def _write_human_booking_options(
     options: list[BookingOption],
     booking_handoff_url: str,
     google_flights_search_url: str,
+    booking_options_warning: str | None,
 ) -> None:
     print(f"Selected itinerary: {booking_handoff_url}")
+    if booking_options_warning:
+        print(f"Warning: {booking_options_warning}")
     if not options:
         print("No direct booking links are currently available for this offer.")
     for index, option in enumerate(options, start=1):
