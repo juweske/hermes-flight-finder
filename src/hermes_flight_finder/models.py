@@ -28,6 +28,29 @@ class MaxStops(StrEnum):
     TWO_OR_FEWER_STOPS = "TWO_OR_FEWER_STOPS"
 
 
+class ConnectionPolicy(StrEnum):
+    """User preference for a potentially inconvenient connection."""
+
+    AVOID = "avoid"
+    WARN = "warn"
+    ALLOW = "allow"
+
+
+class WarningSeverity(StrEnum):
+    """How strongly an itinerary warning affects recommendation order."""
+
+    WARNING = "warning"
+    SEVERE = "severe"
+
+
+class QualityStatus(StrEnum):
+    """Overall itinerary quality under the active user policy."""
+
+    ACCEPTABLE = "acceptable"
+    WARNING = "warning"
+    AVOID = "avoid"
+
+
 def _validate_iata(code: str, field_name: str) -> str:
     normalized = code.upper()
     if not fullmatch(r"[A-Z]{3}", normalized):
@@ -135,6 +158,52 @@ class FlightLeg:
 
 
 @dataclass(frozen=True, slots=True)
+class FlightLayover:
+    """One provider-reported connection between operated flight legs."""
+
+    airport: str
+    duration_minutes: int
+    overnight: bool = False
+    airport_change: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class FlightJourney:
+    """One direction of an itinerary, such as the outbound journey."""
+
+    duration_minutes: int
+    legs: tuple[FlightLeg, ...]
+    layovers: tuple[FlightLayover, ...] = ()
+    self_transfer: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ItineraryWarning:
+    """A deterministic quality warning attached to a concrete itinerary."""
+
+    code: str
+    severity: WarningSeverity
+    message: str
+    journey: int
+    actual_minutes: int | None = None
+    threshold_minutes: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class QualityPolicy:
+    """User-specific rules for evaluating concrete itineraries."""
+
+    acceptable_layover_minutes: int = 240
+    airport_change: ConnectionPolicy = ConnectionPolicy.AVOID
+    overnight_layover: ConnectionPolicy = ConnectionPolicy.AVOID
+    self_transfer: ConnectionPolicy = ConnectionPolicy.AVOID
+
+    def __post_init__(self) -> None:
+        if self.acceptable_layover_minutes < 0:
+            raise ValueError("acceptable layover duration must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
 class FlightOffer:
     """A normalized itinerary returned by a provider."""
 
@@ -144,6 +213,7 @@ class FlightOffer:
     stops: int
     legs: tuple[FlightLeg, ...]
     booking_url: str | None = None
+    journeys: tuple[FlightJourney, ...] = ()
 
     @property
     def airlines(self) -> tuple[str, ...]:
@@ -266,6 +336,8 @@ class PriceObservation:
     airlines: tuple[str, ...] = ()
     stops: int | None = None
     source: str = "fli"
+    quality_status: QualityStatus = QualityStatus.ACCEPTABLE
+    warnings: tuple[ItineraryWarning, ...] = ()
 
     def __post_init__(self) -> None:
         if self.price < 0:
@@ -303,6 +375,8 @@ class Deal:
     reasons: tuple[str, ...]
     airlines: tuple[str, ...] = ()
     stops: int | None = None
+    quality_status: QualityStatus = QualityStatus.ACCEPTABLE
+    warnings: tuple[ItineraryWarning, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

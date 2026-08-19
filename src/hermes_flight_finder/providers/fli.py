@@ -30,6 +30,7 @@ from fli.models import (
 from fli.models import (
     FlightResult as FliFlightResult,
 )
+from fli.models import Layover as FliLayover
 from fli.models import MaxStops as FliMaxStops
 from fli.search import DatePrice, SearchDates, SearchFlights
 
@@ -37,6 +38,8 @@ from hermes_flight_finder.models import (
     BookingOption,
     FlexibleDateOffer,
     FlexibleSearchQuery,
+    FlightJourney,
+    FlightLayover,
     FlightLeg,
     FlightOffer,
     FlightQuery,
@@ -238,11 +241,24 @@ class FliFlightProvider:
             raise ProviderError("Flight provider returned an empty itinerary")
 
         legs: list[FlightLeg] = []
+        journeys: list[FlightJourney] = []
         price_part = parts[0]
         duration_minutes = 0
         stops = 0
         for part in parts:
-            legs.extend(_normalize_leg(leg) for leg in part.legs)
+            journey_legs = tuple(_normalize_leg(leg) for leg in part.legs)
+            journey_layovers = tuple(
+                _normalize_layover(layover) for layover in (part.layovers or [])
+            )
+            journeys.append(
+                FlightJourney(
+                    duration_minutes=part.duration,
+                    legs=journey_legs,
+                    layovers=journey_layovers,
+                    self_transfer=bool(part.self_transfer),
+                )
+            )
+            legs.extend(journey_legs)
             duration_minutes += part.duration
             stops += part.stops
 
@@ -257,6 +273,7 @@ class FliFlightProvider:
             stops=stops,
             legs=tuple(legs),
             booking_url=booking_url,
+            journeys=tuple(journeys),
         )
 
     @staticmethod
@@ -359,3 +376,16 @@ def _normalize_leg(raw_leg: FliFlightLeg) -> FlightLeg:
         )
     except (AttributeError, TypeError) as error:
         raise ProviderError("Flight provider returned an unexpected flight leg") from error
+
+
+def _normalize_layover(raw_layover: FliLayover) -> FlightLayover:
+    try:
+        airport = raw_layover.airport.name
+        return FlightLayover(
+            airport=str(airport),
+            duration_minutes=int(raw_layover.duration),
+            overnight=bool(raw_layover.overnight),
+            airport_change=bool(raw_layover.change_of_airport),
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ProviderError("Flight provider returned an unexpected layover") from error

@@ -11,7 +11,16 @@ from pathlib import Path
 from typing import cast
 
 from hermes_flight_finder.config import get_data_dir
-from hermes_flight_finder.models import AlertRecord, Cabin, MaxStops, PriceObservation, Watch
+from hermes_flight_finder.models import (
+    AlertRecord,
+    Cabin,
+    ItineraryWarning,
+    MaxStops,
+    PriceObservation,
+    QualityStatus,
+    WarningSeverity,
+    Watch,
+)
 from hermes_flight_finder.storage.base import StateCorruptError, WatchRepository
 
 _STATE_VERSION = 1
@@ -257,6 +266,8 @@ def _observation_as_dict(item: PriceObservation) -> dict[str, object]:
         "airlines": list(item.airlines),
         "stops": item.stops,
         "source": item.source,
+        "quality_status": item.quality_status.value,
+        "warnings": [_warning_as_dict(warning) for warning in item.warnings],
     }
 
 
@@ -274,6 +285,35 @@ def _observation_from_dict(raw: dict[str, object]) -> PriceObservation:
         tuple(_required_str_list(raw, "airlines")),
         stops,
         _optional_str(raw.get("source"), "fli"),
+        QualityStatus(_optional_str(raw.get("quality_status"), "acceptable")),
+        tuple(_warning_from_dict(item) for item in _object_list(raw, "warnings")),
+    )
+
+
+def _warning_as_dict(item: ItineraryWarning) -> dict[str, object]:
+    return {
+        "code": item.code,
+        "severity": item.severity.value,
+        "message": item.message,
+        "journey": item.journey,
+        "actual_minutes": item.actual_minutes,
+        "threshold_minutes": item.threshold_minutes,
+    }
+
+
+def _warning_from_dict(raw: dict[str, object]) -> ItineraryWarning:
+    actual = raw.get("actual_minutes")
+    threshold = raw.get("threshold_minutes")
+    for name, value in (("actual_minutes", actual), ("threshold_minutes", threshold)):
+        if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
+            raise ValueError(f"{name} must be an integer")
+    return ItineraryWarning(
+        code=_required_str(raw, "code"),
+        severity=WarningSeverity(_required_str(raw, "severity")),
+        message=_required_str(raw, "message"),
+        journey=_required_int(raw, "journey"),
+        actual_minutes=cast(int | None, actual),
+        threshold_minutes=cast(int | None, threshold),
     )
 
 

@@ -15,12 +15,14 @@ from hermes_flight_finder.config import get_data_dir
 from hermes_flight_finder.models import (
     BookingOption,
     Cabin,
+    ConnectionPolicy,
     FlexibleDateOffer,
     FlexibleSearchQuery,
     FlightOffer,
     FlightQuery,
     MaxStops,
     PriceObservation,
+    QualityPolicy,
     Watch,
     new_watch_id,
 )
@@ -30,6 +32,13 @@ from hermes_flight_finder.providers import (
     FliFlightProvider,
     FlightProvider,
     ProviderError,
+)
+from hermes_flight_finder.quality import (
+    AssessedDateCandidate,
+    AssessedOffer,
+    assess_and_rank_offers,
+    assess_offer,
+    rank_date_candidates,
 )
 from hermes_flight_finder.search import FlexibleSearchService, SearchService
 from hermes_flight_finder.storage import JsonWatchRepository, StateCorruptError, WatchRepository
@@ -53,8 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--passengers", type=int, default=1)
     search.add_argument("--currency", default="EUR")
     search.add_argument("--nonstop", action="store_true")
+    search.add_argument("--max-stops", choices=("0", "1", "2", "any"), default="any")
     search.add_argument("--airlines", type=_parse_airlines, default=())
     search.add_argument("--departure-window", type=_parse_departure_window, metavar="START-END")
+    _add_quality_arguments(search)
     search.add_argument("--json", action="store_true", dest="json_output")
 
     dates = subcommands.add_parser("dates", help="Search flexible travel dates.")
@@ -68,8 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
     dates.add_argument("--passengers", type=int, default=1)
     dates.add_argument("--currency", default="EUR")
     dates.add_argument("--nonstop", action="store_true")
+    dates.add_argument("--max-stops", choices=("0", "1", "2", "any"), default="any")
     dates.add_argument("--airlines", type=_parse_airlines, default=())
     dates.add_argument("--departure-window", type=_parse_departure_window, metavar="START-END")
+    _add_quality_arguments(dates)
+    dates.add_argument("--quality-candidates", type=_positive_int, default=5, metavar="N")
     dates.add_argument("--json", action="store_true", dest="json_output")
 
     booking = subcommands.add_parser("booking", help="Retrieve booking handoff links.")
@@ -78,6 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         "options", help="Retrieve current vendor links for a selected flight result."
     )
     _add_specific_query_arguments(booking_options)
+    _add_quality_arguments(booking_options)
     booking_options.add_argument("--offer", type=int, default=1, metavar="NUMBER")
     booking_options.add_argument("--json", action="store_true", dest="json_output")
 
@@ -107,6 +122,8 @@ def build_parser() -> argparse.ArgumentParser:
     watch_remove.add_argument("--json", action="store_true", dest="json_output")
 
     watch_check = watch_subcommands.add_parser("check", help="Check all flight watches.")
+    _add_quality_arguments(watch_check)
+    watch_check.add_argument("--quality-candidates", type=_positive_int, default=3, metavar="N")
     watch_check.add_argument("--json", action="store_true", dest="json_output")
 
     watch_history = watch_subcommands.add_parser("history", help="Show locally recorded prices.")
@@ -193,13 +210,14 @@ def _run_search(arguments: argparse.Namespace, provider: FlightProvider) -> int:
             departure_date=arguments.departure,
             return_date=arguments.return_date,
             cabin=Cabin(arguments.cabin),
-            max_stops=MaxStops.NON_STOP if arguments.nonstop else MaxStops.ANY,
+            max_stops=_max_stops_from_arguments(arguments),
             passengers=arguments.passengers,
             currency=arguments.currency,
             airlines=arguments.airlines,
             departure_window=arguments.departure_window,
         )
         offers = SearchService(provider).search(query)
+        policy = _quality_policy_from_arguments(arguments)
     except ValueError as error:
         _write_json({"ok": False, "error": {"code": "invalid_request", "message": str(error)}})
         return 2
@@ -208,7 +226,16 @@ def _run_search(arguments: argparse.Namespace, provider: FlightProvider) -> int:
         return 2
 
     if arguments.json_output:
-        _write_json({"ok": True, "offers": [_offer_as_dict(offer) for offer in offers]})
+        assessed_offers = assess_and_rank_offers(offers, policy)
+        _write_json(
+            {
+                "ok": True,
+                "offers": [
+                    _assessed_offer_as_dict(assessment, offers.index(assessment.offer) + 1)
+                    for assessment in assessed_offers
+                ],
+            }
+        )
     else:
         _write_human_offers(offers)
     return 0
@@ -238,13 +265,14 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
             departure_date=arguments.departure,
             return_date=arguments.return_date,
             cabin=Cabin(arguments.cabin),
-            max_stops=MaxStops.NON_STOP if arguments.nonstop else MaxStops.ANY,
+            max_stops=_max_stops_from_arguments(arguments),
             passengers=arguments.passengers,
             currency=arguments.currency,
             airlines=arguments.airlines,
             departure_window=arguments.departure_window,
         )
         selected_offer, options = provider.booking_options(query, arguments.offer - 1)
+        policy = _quality_policy_from_arguments(arguments)
     except ValueError as error:
         _write_json({"ok": False, "error": {"code": "invalid_request", "message": str(error)}})
         return 2
@@ -252,6 +280,7 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
         selected_offer = error.selected_offer
         options = []
         booking_options_warning = str(error)
+        policy = _quality_policy_from_arguments(arguments)
     except ProviderError as error:
         _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
         return 2
@@ -261,7 +290,7 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
     booking_handoff_url = selected_offer.booking_url or google_flights_search_url
     payload: dict[str, object] = {
         "ok": True,
-        "selected_offer": _offer_as_dict(selected_offer),
+        "selected_offer": _assessed_offer_as_dict(assess_offer(selected_offer, policy)),
         "booking_handoff_url": booking_handoff_url,
         "google_flights_search_url": google_flights_search_url,
         "booking_options": [_booking_option_as_dict(option) for option in options],
@@ -290,13 +319,17 @@ def _run_dates(arguments: argparse.Namespace, provider: FlightProvider) -> int:
             min_nights=arguments.min_nights,
             max_nights=arguments.max_nights,
             cabin=Cabin(arguments.cabin),
-            max_stops=MaxStops.NON_STOP if arguments.nonstop else MaxStops.ANY,
+            max_stops=_max_stops_from_arguments(arguments),
             passengers=arguments.passengers,
             currency=arguments.currency,
             airlines=arguments.airlines,
             departure_window=arguments.departure_window,
         )
         offers = FlexibleSearchService(provider).search(query)
+        policy = _quality_policy_from_arguments(arguments)
+        quality_candidates = _evaluate_date_candidates(
+            provider, query, offers[: arguments.quality_candidates], policy
+        )
     except ValueError as error:
         _write_json({"ok": False, "error": {"code": "invalid_request", "message": str(error)}})
         return 2
@@ -305,7 +338,16 @@ def _run_dates(arguments: argparse.Namespace, provider: FlightProvider) -> int:
         return 2
 
     if arguments.json_output:
-        _write_json({"ok": True, "offers": [_flexible_offer_as_dict(offer) for offer in offers]})
+        _write_json(
+            {
+                "ok": True,
+                "offers": [_flexible_offer_as_dict(offer) for offer in offers],
+                "quality_candidates": [
+                    _date_candidate_as_dict(candidate) for candidate in quality_candidates
+                ],
+                "recommended_quality_candidate": _recommended_date_candidate(quality_candidates),
+            }
+        )
     else:
         _write_human_date_offers(offers)
     return 0
@@ -377,7 +419,12 @@ def _run_watch_check(
     arguments: argparse.Namespace, provider: FlightProvider, repository: WatchRepository
 ) -> int:
     try:
-        result = WatchCheckService(provider, repository).check()
+        result = WatchCheckService(
+            provider,
+            repository,
+            quality_policy=_quality_policy_from_arguments(arguments),
+            quality_candidates=arguments.quality_candidates,
+        ).check()
     except ProviderError as error:
         _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
         return 2
@@ -409,7 +456,7 @@ def _watch_from_arguments(arguments: argparse.Namespace) -> Watch:
         min_nights=arguments.min_nights,
         max_nights=arguments.max_nights,
         cabin=Cabin(arguments.cabin),
-        max_stops=MaxStops.NON_STOP if arguments.nonstop else MaxStops.ANY,
+        max_stops=_max_stops_from_arguments(arguments),
         passengers=arguments.passengers,
         currency=arguments.currency,
         airlines=arguments.airlines,
@@ -445,6 +492,82 @@ def _parse_decimal(value: str) -> Decimal:
         raise argparse.ArgumentTypeError("must be a decimal number") from error
 
 
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _parse_duration(value: str) -> int:
+    """Parse a user-facing duration and return whole minutes."""
+    normalized = value.strip().lower().replace(" ", "")
+    try:
+        if normalized.endswith("m") and "h" not in normalized:
+            minutes = int(normalized[:-1])
+        elif "h" in normalized:
+            hours_text, minutes_text = normalized.split("h", maxsplit=1)
+            hours = Decimal(hours_text or "0")
+            trailing_minutes = int(minutes_text.removesuffix("m") or "0")
+            minutes = int(hours * 60) + trailing_minutes
+        else:
+            minutes = int(Decimal(normalized) * 60)
+    except (ArithmeticError, ValueError) as error:
+        raise argparse.ArgumentTypeError(
+            "must use hours such as 4h, 2.5h, or 2h 30m; plain numbers mean hours"
+        ) from error
+    if minutes < 0:
+        raise argparse.ArgumentTypeError("duration must not be negative")
+    return minutes
+
+
+def _add_quality_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--acceptable-layover",
+        type=_parse_duration,
+        default=240,
+        metavar="DURATION",
+        help="Longest comfortable layover, for example 4h or 2h 30m.",
+    )
+    parser.add_argument(
+        "--airport-changes",
+        choices=list(ConnectionPolicy),
+        default=ConnectionPolicy.AVOID,
+    )
+    parser.add_argument(
+        "--overnight-layovers",
+        choices=list(ConnectionPolicy),
+        default=ConnectionPolicy.AVOID,
+    )
+    parser.add_argument(
+        "--self-transfers",
+        choices=list(ConnectionPolicy),
+        default=ConnectionPolicy.AVOID,
+    )
+
+
+def _quality_policy_from_arguments(arguments: argparse.Namespace) -> QualityPolicy:
+    return QualityPolicy(
+        acceptable_layover_minutes=arguments.acceptable_layover,
+        airport_change=ConnectionPolicy(arguments.airport_changes),
+        overnight_layover=ConnectionPolicy(arguments.overnight_layovers),
+        self_transfer=ConnectionPolicy(arguments.self_transfers),
+    )
+
+
+def _max_stops_from_arguments(arguments: argparse.Namespace) -> MaxStops:
+    if arguments.nonstop or arguments.max_stops == "0":
+        return MaxStops.NON_STOP
+    return {
+        "1": MaxStops.ONE_STOP_OR_FEWER,
+        "2": MaxStops.TWO_OR_FEWER_STOPS,
+        "any": MaxStops.ANY,
+    }[arguments.max_stops]
+
+
 def _add_specific_query_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--from", dest="origin", required=True, metavar="IATA")
     parser.add_argument("--to", dest="destination", required=True, metavar="IATA")
@@ -454,6 +577,7 @@ def _add_specific_query_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--passengers", type=int, default=1)
     parser.add_argument("--currency", default="EUR")
     parser.add_argument("--nonstop", action="store_true")
+    parser.add_argument("--max-stops", choices=("0", "1", "2", "any"), default="any")
     parser.add_argument("--airlines", type=_parse_airlines, default=())
     parser.add_argument("--departure-window", type=_parse_departure_window, metavar="START-END")
 
@@ -469,6 +593,7 @@ def _add_watch_query_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--passengers", type=int, default=1)
     parser.add_argument("--currency", default="EUR")
     parser.add_argument("--nonstop", action="store_true")
+    parser.add_argument("--max-stops", choices=("0", "1", "2", "any"), default="any")
     parser.add_argument("--airlines", type=_parse_airlines, default=())
     parser.add_argument("--departure-window", type=_parse_departure_window, metavar="START-END")
 
@@ -477,6 +602,89 @@ def _offer_as_dict(offer: FlightOffer) -> dict[str, object]:
     payload = asdict(offer)
     payload["price"] = str(offer.price) if offer.price is not None else None
     payload["airlines"] = list(offer.airlines)
+    return payload
+
+
+def _assessed_offer_as_dict(
+    assessment: AssessedOffer, offer_number: int | None = None
+) -> dict[str, object]:
+    payload = _offer_as_dict(assessment.offer)
+    if offer_number is not None:
+        payload["offer_number"] = offer_number
+    payload["quality_status"] = assessment.status.value
+    payload["warnings"] = [_warning_as_dict(item) for item in assessment.warnings]
+    return payload
+
+
+def _evaluate_date_candidates(
+    provider: FlightProvider,
+    query: FlexibleSearchQuery,
+    date_offers: list[FlexibleDateOffer],
+    policy: QualityPolicy,
+) -> list[AssessedDateCandidate]:
+    candidates: list[AssessedDateCandidate] = []
+    service = SearchService(provider)
+    for date_offer in date_offers:
+        exact_query = FlightQuery(
+            origin=query.origin,
+            destination=query.destination,
+            departure_date=date_offer.departure_date,
+            return_date=date_offer.return_date,
+            cabin=query.cabin,
+            max_stops=query.max_stops,
+            passengers=query.passengers,
+            currency=query.currency,
+            airlines=query.airlines,
+            departure_window=query.departure_window,
+        )
+        offers = service.search(exact_query)
+        ranked = assess_and_rank_offers(offers, policy)
+        recommended = ranked[0] if ranked else None
+        displayed = ranked[:5]
+        candidates.append(
+            AssessedDateCandidate(
+                date_offer=date_offer,
+                offers=tuple(displayed),
+                offer_numbers=tuple(offers.index(item.offer) + 1 for item in displayed),
+                recommended_offer=recommended,
+                recommended_offer_number=(offers.index(recommended.offer) + 1)
+                if recommended is not None
+                else None,
+            )
+        )
+    return candidates
+
+
+def _date_candidate_as_dict(candidate: AssessedDateCandidate) -> dict[str, object]:
+    return {
+        "date_offer": _flexible_offer_as_dict(candidate.date_offer),
+        "offers": [
+            _assessed_offer_as_dict(item, offer_number)
+            for item, offer_number in zip(candidate.offers, candidate.offer_numbers, strict=True)
+        ],
+        "recommended_offer_number": candidate.recommended_offer_number,
+        "recommended_offer": (
+            _assessed_offer_as_dict(candidate.recommended_offer, candidate.recommended_offer_number)
+            if candidate.recommended_offer is not None
+            else None
+        ),
+    }
+
+
+def _recommended_date_candidate(
+    candidates: list[AssessedDateCandidate],
+) -> dict[str, object] | None:
+    ranked = rank_date_candidates(candidates)
+    return _date_candidate_as_dict(ranked[0]) if ranked else None
+
+
+def _warning_as_dict(warning: object) -> dict[str, object]:
+    from hermes_flight_finder.models import ItineraryWarning
+
+    if not isinstance(warning, ItineraryWarning):
+        raise TypeError("Expected an itinerary warning")
+    payload = asdict(warning)
+    payload["severity"] = warning.severity.value
     return payload
 
 
@@ -542,6 +750,8 @@ def _observation_as_dict(observation: PriceObservation) -> dict[str, object]:
         "airlines": list(observation.airlines),
         "stops": observation.stops,
         "source": observation.source,
+        "quality_status": observation.quality_status.value,
+        "warnings": [_warning_as_dict(item) for item in observation.warnings],
     }
 
 
@@ -591,6 +801,8 @@ def _deal_as_dict(deal: object) -> dict[str, object]:
         "reasons": list(typed_deal.reasons),
         "airlines": list(typed_deal.airlines),
         "stops": typed_deal.stops,
+        "quality_status": typed_deal.quality_status.value,
+        "warnings": [_warning_as_dict(item) for item in typed_deal.warnings],
     }
 
 

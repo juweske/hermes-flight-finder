@@ -28,7 +28,7 @@ history, deterministic alerts, the Hermes skill bundle, and cron guidance are av
 - [x] Preselected Google Flights itinerary handoff with both outbound and return flights already chosen
 - [ ] Full vendor-specific booking deep links when supported by a provider
 - [ ] Booking context: bag allowance, fare conditions, refundability, and change policy when available
-- [ ] Configurable itinerary-quality rules and warnings: long or overnight layovers, airport or terminal changes, self-transfers, and impractical total journey times
+- [x] Configurable itinerary-quality rules and warnings: long or overnight layovers, airport changes, self-transfers, and impractical total journey times
 - [ ] Multi-airport, open-jaw, and road-trip itineraries, such as Hamburg to Nice and Marseille to Berlin
 - [ ] Flexible-date price grid for comparing possible trip-date combinations
 - [ ] Watch health, stale-data status, and provider error visibility
@@ -92,6 +92,8 @@ uv run hermes-flights search \
 
 Successful JSON contains an `ok` flag and normalized offers. A provider failure returns a
 non-zero exit status and a stable JSON error object; it is never represented as an empty result.
+Concrete offers include `quality_status` and structured `warnings`. Acceptable itineraries are
+ranked ahead of warning and avoid results, while every result remains visible.
 
 ## Flexible-Date Search
 
@@ -109,8 +111,31 @@ uv run hermes-flights dates \
 ```
 
 The command makes one calendar request per requested trip duration, then merges duplicate date
-pairs and orders the results by price. Every result includes a Google Flights route-and-date link;
-exact itinerary links are added after a concrete flight search.
+pairs and orders the results by price. Every result includes a Google Flights route-and-date link.
+By default, the five cheapest date pairs are also searched as concrete itineraries and returned in
+`quality_candidates`; `recommended_quality_candidate` prefers a practical itinerary over a cheaper
+one with severe warnings. Change the request budget with `--quality-candidates N`.
+
+## Itinerary Preferences
+
+Specific searches, flexible searches, booking handoffs, and watch checks share the same quality
+flags:
+
+```bash
+hermes-flights dates ... \
+  --acceptable-layover 4h \
+  --airport-changes avoid \
+  --overnight-layovers avoid \
+  --self-transfers avoid \
+  --max-stops 1 \
+  --quality-candidates 5 \
+  --json
+```
+
+Durations accept values such as `4h`, `2.5h`, `2h 30m`, or `150m`. Connection policies accept
+`avoid`, `warn`, or `allow`. `avoid` adds a severe warning and lowers recommendation priority,
+`warn` labels the itinerary without excluding it, and `allow` suppresses that warning. Results are
+never silently removed by these policies.
 
 ## Booking Handoff
 
@@ -150,8 +175,10 @@ another local directory.
 
 ## Price Checking
 
-`hermes-flights watch check --json` searches every saved watch, stores the lowest current date
-pair, and returns alerts only when a target price is met or a configured percentage drop occurs.
+`hermes-flights watch check --json` searches every saved watch, concretely evaluates the cheapest
+three date pairs by default, stores the best practical current itinerary, and returns alerts only
+when a target price is met or a configured percentage drop occurs. Use `--quality-candidates N`
+to change that recurring request budget. Observation and alert JSON includes warning details.
 The first check establishes a baseline unless its target price is already met; repeated alerts for
 the same price and dates are suppressed.
 
@@ -172,6 +199,18 @@ hermes skills install juweske/hermes-flight-finder/skills/flight-finder
 Install the Python CLI separately, then start a fresh Hermes session (or use `--now` when
 installing) so Hermes can load the skill. It translates travel requests into
 `hermes-flights ... --json` commands and only reports returned data.
+
+Configure per-profile defaults and itinerary preferences after installation:
+
+```bash
+hermes config migrate
+```
+
+Hermes stores these non-secret settings under `skills.config.flight_finder` in the active
+profile. The setup covers home airports, currency, layover and connection policies, and separate
+candidate limits for interactive searches and repeated watch checks. Interactive searches default
+to five detailed candidates; watches recommend the lower default of three to limit recurring
+provider traffic.
 
 See [Hermes cron integration](docs/hermes-cron.md) to schedule watch checks and suppress quiet
 runs with Hermes's `[SILENT]` delivery token.

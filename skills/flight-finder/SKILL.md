@@ -8,6 +8,43 @@ metadata:
   hermes:
     tags: [flights, travel, google-flights, price-tracking, automation]
     requires_toolsets: [terminal]
+    config:
+      - key: flight_finder.home_airports
+        description: Default departure airport IATA codes when the user omits an origin.
+        default: ""
+        prompt: "Which airport or airports do you normally depart from? Use comma-separated IATA codes, for example JFK,LGA,EWR for New York City. Leave blank for no default."
+      - key: flight_finder.currency
+        description: Preferred currency for flight prices.
+        default: USD
+        prompt: "Which currency should flight prices normally use? Enter a three-letter code such as USD, EUR, or GBP."
+      - key: flight_finder.acceptable_layover
+        description: Longest layover considered comfortable; plain numbers mean hours.
+        default: 4h
+        prompt: "What is the longest layover you normally consider comfortable? Use hours, for example 4h or 2h 30m. A plain number is treated as hours."
+      - key: flight_finder.airport_change_policy
+        description: How to treat connections that require changing airports.
+        default: avoid
+        prompt: "How should connections that require changing airports be handled? Enter avoid, warn, or allow."
+      - key: flight_finder.overnight_layover_policy
+        description: How to treat overnight layovers.
+        default: avoid
+        prompt: "How should overnight layovers be handled? Enter avoid, warn, or allow."
+      - key: flight_finder.self_transfer_policy
+        description: How to treat self-transfers or separate-ticket connections.
+        default: avoid
+        prompt: "How should self-transfers or separate-ticket connections be handled? Enter avoid, warn, or allow."
+      - key: flight_finder.max_stops
+        description: Default maximum number of stops allowed per direction.
+        default: 1
+        prompt: "How many stops per direction are normally acceptable? Enter 0, 1, 2, or any."
+      - key: flight_finder.interactive_quality_candidates
+        description: Number of cheapest flexible date pairs evaluated as concrete itineraries in an interactive search.
+        default: 5
+        prompt: "How many flexible-date candidates should interactive searches evaluate in detail? Five gives a useful comparison; lower values respond faster and make fewer provider requests."
+      - key: flight_finder.watch_quality_candidates
+        description: Number of cheapest flexible date pairs evaluated during each repeated watch check.
+        default: 3
+        prompt: "How many candidates should each scheduled watch check evaluate in detail? A lower value is recommended because every watch repeats these provider requests; 3 is the suggested default."
 ---
 
 # Flight Finder
@@ -37,6 +74,14 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
   do not report the entire booking handoff as failed.
 - Preserve the user's requested currency, passenger count, cabin, airline preference, direct
   requirement, and departure window when they are specified.
+- Read the active `flight_finder` profile configuration before building commands. Use its home
+  airports and currency when the user omits them. Pass its layover, airport-change, overnight,
+  self-transfer, maximum-stop, and candidate-limit values to the CLI. An explicit request in the
+  current conversation always overrides the saved profile value.
+- Append `--acceptable-layover`, `--airport-changes`, `--overnight-layovers`, `--self-transfers`,
+  and `--max-stops` to every `search`, `dates`, and `booking options` command. Append
+  `--quality-candidates` to `dates` using `interactive_quality_candidates`, and to `watch check`
+  using `watch_quality_candidates`.
 - Use IATA airport codes. Resolve unambiguous city names to their primary airport; ask when a city
   has multiple plausible airports or the user's preference matters.
 - Do not book flights, open airline logins, or imply that a fare is guaranteed.
@@ -54,6 +99,10 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
   complete `booking_url` copied verbatim. Print
   the recommended concrete itinerary's complete `booking_url` or `booking_handoff_url` on its own
   line directly beneath that itinerary. Never ask the user to request the full link.
+- Use `quality_status` and `warnings` exactly as returned. Prefer `acceptable` over `warning`, and
+  `warning` over `avoid`, even when the lower-ranked option is cheaper. Keep avoid results visible
+  with a clear warning; never silently discard them. Explain warning messages briefly in the
+  user's language and do not infer warnings the CLI did not return.
 
 ## Workflows
 
@@ -65,7 +114,8 @@ Use `search` for a fixed departure date, with `--return` for a round trip.
 hermes-flights search --from HAM --to NCE --departure 2026-09-18 --return 2026-09-21 --nonstop --currency EUR --json
 ```
 
-Summarize the cheapest returned options with price, dates, stops, and airlines. If `offers` is
+Offers are quality-ranked and retain `offer_number` for later booking handoff. Summarize the best
+returned options with price, dates, stops, airlines, and any warnings. If `offers` is
 empty, say that no matching options were returned. Include the recommended offer's `booking_url` immediately in the same answer when present;
 place the full URL directly beneath the offer. Do not ask for permission or defer the link to another
 message. It opens that specific itinerary rather than a general flight search.
@@ -78,13 +128,16 @@ Use `dates` when the user gives a date window and a trip-duration range.
 hermes-flights dates --from HAM --to NCE --start 2026-08-20 --end 2026-10-15 --min-nights 2 --max-nights 5 --nonstop --currency EUR --json
 ```
 
-The returned offers are calendar price/date pairs, not guaranteed itinerary details. Render them
+The returned `offers` are calendar price/date pairs, not guaranteed itinerary details. Render them
 in one table with exactly `Abflug | Nächte | Rückkehr | Ab-Preis | Link`. Every row must contain
 that offer's returned `booking_url`; this opens Google Flights for the route and date pair but does
 not preselect a concrete itinerary.
 
-For an exploratory request such as a flexible weekend trip, prepare the complete five-column table,
-then automatically run `booking options` for the top recommended date pair using the same route,
+Use `quality_candidates` for concrete itinerary details and
+`recommended_quality_candidate` for the default recommendation; do not recommend the first
+calendar row merely because it has the lowest from-price. For an exploratory request such as a
+flexible weekend trip, prepare the complete five-column table, then automatically run `booking options`
+for the recommended candidate using its `recommended_offer_number` and the same route,
 cabin, passenger, airline, stop, and currency constraints. Include `booking_handoff_url` directly
 beneath the recommended itinerary. If it is unavailable, include `google_flights_search_url` on its
 own line. Finish all commands before sending exactly one response unless the user explicitly asks only for comparison or says not to retrieve a booking handoff.
@@ -117,11 +170,13 @@ in the same conversation.
 
 ### Check Watches
 
-Run `hermes-flights watch check --json`.
+Run `hermes-flights watch check` with the profile's quality flags and
+`--quality-candidates <watch_quality_candidates> --json`.
 
 If `alerts` is empty, report that no new deal met the configured conditions. If alerts are present,
-report route from the saved watch, travel dates, current price, prior best when provided, and the
-reported reasons. Do not infer an airline when the alert does not contain one.
+report route from the saved watch, travel dates, current price, prior best when provided, the
+reported reasons, and any returned warnings. Do not infer an airline when the alert does not
+contain one.
 
 ## Scheduled Checks
 

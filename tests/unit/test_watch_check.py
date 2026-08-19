@@ -16,12 +16,22 @@ from hermes_flight_finder.tracking import WatchCheckService
 class _PriceProvider:
     def __init__(self, prices: list[Decimal]) -> None:
         self._prices = prices
+        self._current_price = Decimal()
 
     def search(self, query: FlightQuery) -> list[FlightOffer]:
-        return []
+        return [
+            FlightOffer(
+                price=self._current_price,
+                currency=query.currency,
+                duration_minutes=120,
+                stops=0,
+                legs=(),
+            )
+        ]
 
     def search_dates(self, query: FlexibleSearchQuery) -> list[FlexibleDateOffer]:
         price = self._prices.pop(0)
+        self._current_price = price
         return [
             FlexibleDateOffer(
                 departure_date=query.start_date,

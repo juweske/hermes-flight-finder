@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Protocol, cast
 
@@ -34,6 +34,16 @@ class _RawFlight:
     currency: str | None
     duration: int
     stops: int
+    layovers: list[_RawLayover] | None = None
+    self_transfer: bool | None = None
+
+
+@dataclass(frozen=True)
+class _RawLayover:
+    airport: _NamedCode
+    duration: int
+    overnight: bool = False
+    change_of_airport: bool = False
 
 
 @dataclass(frozen=True)
@@ -133,7 +143,18 @@ def _raw_flight(origin: str, destination: str, price: float) -> _RawFlight:
 
 
 def test_provider_normalizes_round_trip() -> None:
-    outbound = _raw_flight("HAM", "NCE", 89.0)
+    outbound = replace(
+        _raw_flight("HAM", "NCE", 89.0),
+        layovers=[
+            _RawLayover(
+                airport=_NamedCode("ZRH"),
+                duration=300,
+                overnight=True,
+                change_of_airport=False,
+            )
+        ],
+        self_transfer=True,
+    )
     inbound = _raw_flight("NCE", "HAM", 89.0)
     client = _FakeSearchClient([(outbound, inbound)])
     provider = FliFlightProvider(search_factory=lambda: client)
@@ -156,6 +177,9 @@ def test_provider_normalizes_round_trip() -> None:
     assert offers[0].airlines == ("EW",)
     assert offers[0].booking_url == ("https://www.google.com/travel/flights/booking?tfs=TEST")
     assert [leg.departure_airport for leg in offers[0].legs] == ["HAM", "NCE"]
+    assert offers[0].journeys[0].layovers[0].duration_minutes == 300
+    assert offers[0].journeys[0].layovers[0].overnight is True
+    assert offers[0].journeys[0].self_transfer is True
 
 
 def test_provider_rejects_generic_google_flights_url_as_itinerary_handoff() -> None:

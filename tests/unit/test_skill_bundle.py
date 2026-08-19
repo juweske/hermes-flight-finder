@@ -16,6 +16,15 @@ def test_flight_finder_skill_declares_terminal_json_workflow() -> None:
     assert "one user-visible response after all tool calls finish" in skill
     assert "Abflug | Nächte | Rückkehr | Ab-Preis | Link" in skill
     assert "Copy every URL verbatim from CLI JSON" in skill
+    assert "key: flight_finder.home_airports" in skill
+    assert "JFK,LGA,EWR for New York City" in skill
+    assert 'default: ""' in skill
+    assert "key: flight_finder.interactive_quality_candidates" in skill
+    assert "key: flight_finder.watch_quality_candidates" in skill
+    assert "lower value is recommended" in skill
+    assert "Prefer `acceptable` over `warning`" in skill
+    assert "recommended_quality_candidate" in skill
+    assert "--acceptable-layover" in skill
     assert "exactly [SILENT]" in skill
 
 

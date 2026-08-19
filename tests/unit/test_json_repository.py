@@ -5,7 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from hermes_flight_finder.models import MaxStops, PriceObservation, Watch
+from hermes_flight_finder.models import (
+    ItineraryWarning,
+    MaxStops,
+    PriceObservation,
+    QualityStatus,
+    WarningSeverity,
+    Watch,
+)
 from hermes_flight_finder.storage import JsonWatchRepository, StateCorruptError
 
 
@@ -63,6 +70,15 @@ def test_repository_preserves_observation_source(tmp_path: Path) -> None:
         departure_date=date(2026, 9, 18),
         return_date=date(2026, 9, 21),
         source="serpapi",
+        quality_status=QualityStatus.AVOID,
+        warnings=(
+            ItineraryWarning(
+                code="overnight_layover",
+                severity=WarningSeverity.SEVERE,
+                message="Journey 1 includes an overnight layover.",
+                journey=1,
+            ),
+        ),
     )
 
     repository.record_observation(observation)
@@ -95,3 +111,5 @@ def test_repository_defaults_legacy_observation_source_to_fli(tmp_path: Path) ->
     observations = JsonWatchRepository(tmp_path).list_observations("ham-nce-test")
 
     assert observations[0].source == "fli"
+    assert observations[0].quality_status == QualityStatus.ACCEPTABLE
+    assert observations[0].warnings == ()

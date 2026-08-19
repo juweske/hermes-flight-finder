@@ -145,6 +145,8 @@ def test_search_writes_stable_json(capsys: CaptureFixture[str]) -> None:
     assert payload["ok"] is True
     assert payload["offers"][0]["price"] == "89"
     assert payload["offers"][0]["legs"][0]["departure_airport"] == "HAM"
+    assert payload["offers"][0]["quality_status"] == "acceptable"
+    assert payload["offers"][0]["warnings"] == []
 
 
 def test_dates_writes_stable_json(capsys: CaptureFixture[str]) -> None:
@@ -174,6 +176,8 @@ def test_dates_writes_stable_json(capsys: CaptureFixture[str]) -> None:
     assert payload["offers"][0]["nights"] == 3
     assert payload["offers"][0]["price"] == "79"
     assert payload["offers"][0]["booking_url"].startswith("https://www.google.com/travel/flights?")
+    assert payload["quality_candidates"][0]["recommended_offer"]["price"] == "89"
+    assert payload["recommended_quality_candidate"]["date_offer"]["nights"] == 3
 
 
 def test_watch_lifecycle_writes_stable_json(capsys: CaptureFixture[str], tmp_path: Path) -> None:
