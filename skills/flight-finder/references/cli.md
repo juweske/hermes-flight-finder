@@ -17,7 +17,9 @@ Success contains `offers`, each with price, currency, stops, airlines, and legs.
 hermes-flights dates --from IATA --to IATA --start YYYY-MM-DD --end YYYY-MM-DD --min-nights N --max-nights N [--nonstop] [--currency ISO] --json
 ```
 
-Success contains price/date offers with `departure_date`, `return_date`, and `nights`.
+Success contains price/date offers with `departure_date`, `return_date`, `nights`, and a
+`booking_url` that opens Google Flights for that route and date pair. This is a date-search handoff,
+not a preselected itinerary.
 
 ## Booking Handoff
 

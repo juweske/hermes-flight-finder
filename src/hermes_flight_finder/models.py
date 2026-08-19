@@ -177,6 +177,7 @@ class FlexibleDateOffer:
     return_date: date
     price: Decimal
     currency: str | None
+    booking_url: str | None = None
 
     @property
     def nights(self) -> int:

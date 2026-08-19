@@ -193,6 +193,8 @@ def test_provider_expands_each_requested_duration() -> None:
     assert client.durations == [2, 3, 4]
     assert [offer.nights for offer in offers] == [2, 3, 4]
     assert [str(offer.price) for offer in offers] == ["98.0", "97.0", "96.0"]
+    assert all(offer.booking_url for offer in offers)
+    assert "Flights%20from%20HAM%20to%20NCE" in (offers[0].booking_url or "")
 
 
 def test_provider_returns_direct_booking_handoffs_for_the_ranked_offer() -> None:

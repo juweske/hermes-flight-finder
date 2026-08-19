@@ -71,6 +71,9 @@ class _FakeProvider:
                 return_date=date(2026, 9, 21),
                 price=Decimal("79"),
                 currency="EUR",
+                booking_url=(
+                    "https://www.google.com/travel/flights?q=HAM+NCE+2026-09-18+2026-09-21"
+                ),
             )
         ]
 
@@ -170,6 +173,7 @@ def test_dates_writes_stable_json(capsys: CaptureFixture[str]) -> None:
     assert payload["ok"] is True
     assert payload["offers"][0]["nights"] == 3
     assert payload["offers"][0]["price"] == "79"
+    assert payload["offers"][0]["booking_url"].startswith("https://www.google.com/travel/flights?")
 
 
 def test_watch_lifecycle_writes_stable_json(capsys: CaptureFixture[str], tmp_path: Path) -> None:

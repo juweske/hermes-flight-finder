@@ -109,7 +109,8 @@ uv run hermes-flights dates \
 ```
 
 The command makes one calendar request per requested trip duration, then merges duplicate date
-pairs and orders the results by price.
+pairs and orders the results by price. Every result includes a Google Flights route-and-date link;
+exact itinerary links are added after a concrete flight search.
 
 ## Booking Handoff
 

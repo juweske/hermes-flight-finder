@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Protocol, cast
 from urllib.parse import parse_qs, urlsplit
 
+from fli.core import google_flights_url
 from fli.models import (
     Airline,
     Airport,
@@ -182,7 +183,7 @@ class FliFlightProvider:
             if not isinstance(raw_results, list):
                 raise ProviderError("Flight provider returned an unexpected response")
             results = cast(list[DatePrice], raw_results)
-            offers.extend(self._normalize_date_price(result) for result in results)
+            offers.extend(self._normalize_date_price(result, query) for result in results)
         return offers
 
     @staticmethod
@@ -271,7 +272,9 @@ class FliFlightProvider:
         )
 
     @staticmethod
-    def _normalize_date_price(raw_price: DatePrice) -> FlexibleDateOffer:
+    def _normalize_date_price(
+        raw_price: DatePrice, query: FlexibleSearchQuery
+    ) -> FlexibleDateOffer:
         if len(raw_price.date) != 2:
             raise ProviderError("Flight provider returned an unexpected date result")
         departure_at, return_at = raw_price.date
@@ -280,6 +283,14 @@ class FliFlightProvider:
             return_date=return_at.date(),
             price=Decimal(str(raw_price.price)),
             currency=raw_price.currency,
+            booking_url=google_flights_url(
+                query.origin,
+                query.destination,
+                departure_at.date().isoformat(),
+                return_at.date().isoformat(),
+                currency=query.currency,
+                language="en",
+            ),
         )
 
 

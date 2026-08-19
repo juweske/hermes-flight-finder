@@ -660,6 +660,8 @@ def _write_human_date_offers(offers: list[FlexibleDateOffer]) -> None:
         price = f"{offer.currency or ''} {offer.price}".strip()
         print(f"{index}. {price} - {offer.departure_date} -> {offer.return_date}")
         print(f"   {offer.nights} night(s)")
+        if offer.booking_url:
+            print(f"   Link: {offer.booking_url}")
 
 
 def _write_watch_result(json_output: bool, watch: Watch, title: str) -> None:

@@ -8,11 +8,14 @@ def test_flight_finder_skill_declares_terminal_json_workflow() -> None:
     assert "requires_toolsets: [terminal]" in skill
     assert "hermes-flights watch check --json" in skill
     assert "Never invent availability" in skill
-    assert "Do not use Markdown tables" in skill
+    assert "Do not create any other table layout" in skill
     assert "automatically run `booking options`" in skill
     assert "Show booking links immediately in the same response" in skill
     assert "Treat `booking_options_warning`" in skill
     assert "Never ask whether the user wants a link" in skill
+    assert "one user-visible response after all tool calls finish" in skill
+    assert "Abflug | Nächte | Rückkehr | Ab-Preis | Link" in skill
+    assert "Copy every URL verbatim from CLI JSON" in skill
     assert "exactly [SILENT]" in skill
 
 
