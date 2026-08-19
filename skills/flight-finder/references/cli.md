@@ -24,13 +24,16 @@ offers, it searches the two directions independently. Fallback offers have
 hermes-flights dates --from IATA[,IATA] --to IATA[,IATA] --start YYYY-MM-DD --end YYYY-MM-DD --min-nights N --max-nights N [--return-from IATA[,IATA]] [--return-to IATA[,IATA]] [--nonstop|--max-stops 0|1|2|any] [--currency ISO] [quality options] [--quality-candidates N] --json
 ```
 
-Success contains price/date offers with `departure_date`, `return_date`, `nights`, and a
-`booking_url` that opens Google Flights for that route and date pair. This is a date-search handoff,
-not a preselected itinerary.
+Success contains price/date offers with `departure_date`, `return_date`, `nights`, a `booking_url`,
+and a ready-to-render `booking_link_markdown` that opens Google Flights for that route and date pair.
+This is a date-search handoff, not a preselected itinerary. Agents should copy the Markdown field
+verbatim instead of transcribing its URL.
 
 The cheapest `N` date pairs are also searched as concrete itineraries. They appear in
 `quality_candidates`; `recommended_quality_candidate` is the best practical option after warning
 evaluation, not necessarily the lowest calendar price.
+Successful non-empty calendar responses are cached for 15 minutes. This stabilizes identical
+immediate reruns; concrete candidate searches are not served from this cache.
 For an open jaw, two one-way calendars generate candidate date pairs, but each concrete candidate
 is searched as multi-city before the separate-ticket fallback can activate.
 
@@ -40,16 +43,22 @@ is searched as multi-city before the separate-ticket fallback can activate.
 hermes-flights booking options --from IATA[,IATA] --to IATA[,IATA] --departure YYYY-MM-DD [--return-from IATA[,IATA]] [--return-to IATA[,IATA]] [--return YYYY-MM-DD] [--cabin ECONOMY|PREMIUM_ECONOMY|BUSINESS|FIRST] [--passengers N] [--currency ISO] [--nonstop|--max-stops 0|1|2|any] [quality options] [--airlines XX,YY] [--departure-window START-END] [--offer NUMBER] --json
 ```
 
-The command reruns the exact search and returns `selected_offer`, current `booking_options`, and a
-`booking_handoff_url`. When Fli can construct a deterministic `tfs` URL, the handoff opens the
+The command reruns the exact search and returns `selected_offer`, current `booking_options`, a
+`booking_handoff_url`, and its ready-to-render `booking_handoff_link_markdown`. When Fli can
+construct a deterministic `tfs` URL, the handoff opens the
 selected itinerary's Google Flights booking page; otherwise it uses `google_flights_search_url` as
 the fallback. If vendor-option retrieval fails after an exact itinerary was selected,
 the command still returns `ok: true`, the handoff, an empty `booking_options` list, and a
 `booking_options_warning`.
 
-For a separate-ticket fallback, `booking_handoff_url` is null and `booking_handoff_urls` contains
-one exact handoff per independent ticket. The warning and component prices are retained in
-`selected_offer`.
+If the provider cannot repeat the search at all, the command returns degraded success with
+`selected_offer: null`, `booking_refresh_failed: true`, and a route-and-date
+`google_flights_search_url` as `booking_handoff_url`. This fallback does not confirm an itinerary or
+vendor availability.
+
+Separate-ticket search results already contain one exact handoff per independent ticket in
+`component_booking_urls`. Consumers should use those links directly and should not run `booking
+options` for that result.
 
 Each option includes vendor details, refreshed price when available, and full direct or Google
 click-through URLs when supplied by the provider. `google_flights_search_url` is always a valid

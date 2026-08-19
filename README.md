@@ -130,6 +130,11 @@ uv run hermes-flights dates \
 
 The command makes one calendar request per requested trip duration, then merges duplicate date
 pairs and orders the results by price. Every result includes a Google Flights route-and-date link.
+JSON responses also include ready-to-render Markdown link fields so an agent can copy long booking
+handoffs without transcribing or truncating their encoded itinerary tokens.
+Successful non-empty calendar responses are cached locally for 15 minutes so identical immediate
+searches remain stable when the upstream calendar endpoint is intermittent. Concrete itinerary
+checks still run on every invocation.
 By default, the five cheapest date pairs are also searched as concrete itineraries and returned in
 `quality_candidates`; `recommended_quality_candidate` prefers a practical itinerary over a cheaper
 one with severe warnings. Change the request budget with `--quality-candidates N`.
@@ -159,12 +164,16 @@ never silently removed by these policies.
 
 ## Booking Handoff
 
-Use `booking options` after choosing a numbered specific-date search result, or automatically for the
-top recommendation from a flexible-date search. It reruns the search and
+Use `booking options` after choosing a numbered specific-date single-itinerary search result, or
+automatically for a single-itinerary top recommendation from a flexible-date search. Separate-ticket
+results already contain one exact component link per independent ticket and should not be refreshed
+through this command. It reruns the search and
 returns a deterministic Google Flights link for the selected itinerary plus current airline-direct
 or OTA links when available. If an exact itinerary link cannot be constructed, the response uses a
 route-and-date Google Flights search handoff instead. It never opens a link or makes a purchase. Booking prices and availability can change before the provider
-page loads.
+page loads. When the provider cannot repeat the search, the command returns degraded success with a
+route-and-date Google Flights handoff and `booking_refresh_failed: true`; it does not claim that a
+specific itinerary or vendor was reconfirmed.
 
 ```bash
 hermes-flights booking options \

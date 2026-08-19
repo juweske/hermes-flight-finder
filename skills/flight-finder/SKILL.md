@@ -91,7 +91,7 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
   `--return-to` when the trip returns to the original departure group. Do not manually split an
   open jaw into one-way commands: the CLI searches multi-city first and owns fallback logic.
 - Do not book flights, open airline logins, or imply that a fare is guaranteed.
-- Complete all required `dates`, `search`, and `booking options` calls before replying. Send exactly
+- Complete all required `dates`, `search`, and applicable `booking options` calls before replying. Send exactly
   one user-visible response after all tool calls finish. Never send progress messages such as
   "I am searching", "I will fetch the link", or "I will send the full link next".
 - Whenever a table is used, it must have exactly these five columns in this order:
@@ -100,11 +100,15 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
 - Show booking links immediately in the same response as the flight results. This is mandatory
   whenever a concrete recommended itinerary is available. Never ask whether the user wants a link, offer to
   fetch it later, or wait for a follow-up request.
-- Copy every URL verbatim from CLI JSON. Never reconstruct, summarize, truncate, or add ellipses to
-  a URL. In flexible-date tables, format each `Link` cell as `[Öffnen](URL)`, replacing `URL` with the
-  complete `booking_url` copied verbatim. Print
+- Never transcribe or reconstruct a booking URL. Copy the CLI's ready-to-render
+  `booking_link_markdown`, `booking_handoff_link_markdown`, or
+  `component_booking_links_markdown` value verbatim into the response. Never summarize, truncate,
+  alter, or add ellipses to one of these values. In flexible-date tables, use each offer's complete
+  `booking_link_markdown` value in the `Link` cell. Print
   the recommended concrete itinerary's complete `booking_url` or `booking_handoff_url` on its own
-  line directly beneath that itinerary. Never ask the user to request the full link.
+  line directly beneath that itinerary by copying its corresponding Markdown field. Never ask the
+  user to request the full link. If no ready-to-render field accompanies a URL, use the shorter
+  `google_flights_search_url` fallback instead of manually copying a long `tfs` URL.
 - Use `quality_status` and `warnings` exactly as returned. Prefer `acceptable` over `warning`, and
   `warning` over `avoid`, even when the lower-ranked option is cheaper. Keep avoid results visible
   with a clear warning; never silently discard them. Explain warning messages briefly in the
@@ -112,8 +116,9 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
 - Treat `booking_strategy: "single_itinerary"` as the normal round-trip or multi-city result. Only
   when the CLI returns `booking_strategy: "separate_tickets"`, show `booking_warning` prominently,
   label the total as a combined estimate, list every value in `component_prices`, and print every
-  complete URL in `component_booking_urls`. Never describe separate tickets as one protected itinerary. Do not add
-  this warning to an ordinary multi-city result.
+  complete URL in `component_booking_urls`. These links are already final handoffs: do not run
+  `booking options` for a separate-ticket result. Never describe separate tickets as one protected
+  itinerary. Do not add this warning to an ordinary multi-city result.
 
 ## Workflows
 
@@ -141,14 +146,15 @@ hermes-flights dates --from HAM --to NCE --start 2026-08-20 --end 2026-10-15 --m
 
 The returned `offers` are calendar price/date pairs, not guaranteed itinerary details. Render them
 in one table with exactly `Abflug | Nächte | Rückkehr | Ab-Preis | Link`. Every row must contain
-that offer's returned `booking_url`; this opens Google Flights for the route and date pair but does
+that offer's returned `booking_link_markdown`; this opens Google Flights for the route and date pair but does
 not preselect a concrete itinerary.
 
 Use `quality_candidates` for concrete itinerary details and
 `recommended_quality_candidate` for the default recommendation; do not recommend the first
 calendar row merely because it has the lowest from-price. For an exploratory request such as a
 flexible weekend trip, prepare the complete five-column table, then automatically run `booking options`
-for the recommended candidate using its `recommended_offer_number` and the same route,
+for the recommended candidate only when it uses `booking_strategy: "single_itinerary"`, using its
+`recommended_offer_number` and the same route,
 cabin, passenger, airline, stop, and currency constraints. Include `booking_handoff_url` directly
 beneath the recommended itinerary. If it is unavailable, include `google_flights_search_url` on its
 own line. Finish all commands before sending exactly one response unless the user explicitly asks only for comparison or says not to retrieve a booking handoff.
@@ -161,14 +167,16 @@ only if the concrete offer explicitly uses the separate-ticket strategy.
 
 When the user chooses a numbered result from a specific-date search and asks to book it, run
 `booking options` with the same route, dates, filters, and `--offer` number. Also use it
-automatically for the top recommendation from an exploratory flexible-date search. Present the
-returned `booking_handoff_url` first. It is the selected itinerary's Google Flights booking page
+automatically for a single-itinerary top recommendation from an exploratory flexible-date search.
+Do not run it for `separate_tickets`; use the component links from the search response. Present the
+returned `booking_handoff_link_markdown` first. It is the selected itinerary's Google Flights booking page
 when available and otherwise the route/date search fallback. Then present useful vendor options,
 preferring `is_airline_direct: true` when suitable, and clearly state that the provider confirms the
 final price and availability. Do not present a shortened or placeholder vendor URL as a link. Never
 open a link, start a booking, or select a vendor without the user explicitly choosing it.
-For a separate-ticket fallback, `booking_handoff_url` is null and `booking_handoff_urls` contains
-one full URL per independent ticket. Show all links together with the returned warning.
+If a booking refresh returns `booking_refresh_failed: true`, present its route-and-date
+`booking_handoff_url` as a degraded fallback and state that no itinerary or vendor availability was
+confirmed by that refresh.
 
 ### Manage Watches
 

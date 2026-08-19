@@ -257,18 +257,7 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
         if offer_number < 1:
             raise ValueError("offer number must be at least 1")
         query = _flight_query_from_arguments(arguments)
-        searched_offers = SearchService(provider).search(query) if query.is_open_jaw else []
-        if (
-            searched_offers
-            and searched_offers[0].booking_strategy == BookingStrategy.SEPARATE_TICKETS
-        ):
-            if offer_number > len(searched_offers):
-                raise ValueError(f"offer number must be between 1 and {len(searched_offers)}")
-            selected_offer = searched_offers[offer_number - 1]
-            options = []
-            booking_options_warning = selected_offer.booking_warning
-        else:
-            selected_offer, options = provider.booking_options(query, offer_number - 1)
+        selected_offer, options = provider.booking_options(query, offer_number - 1)
         policy = _quality_policy_from_arguments(arguments)
     except ValueError as error:
         _write_json({"ok": False, "error": {"code": "invalid_request", "message": str(error)}})
@@ -279,8 +268,27 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
         booking_options_warning = str(error)
         policy = _quality_policy_from_arguments(arguments)
     except ProviderError as error:
-        _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
-        return 2
+        assert query is not None
+        google_flights_search_url = _google_flights_search_url(query)
+        payload: dict[str, object] = {
+            "ok": True,
+            "selected_offer": None,
+            "booking_handoff_url": google_flights_search_url,
+            "booking_handoff_link_markdown": _markdown_link(google_flights_search_url),
+            "booking_handoff_urls": [],
+            "booking_handoff_links_markdown": [],
+            "google_flights_search_url": google_flights_search_url,
+            "booking_options": [],
+            "booking_options_warning": str(error),
+            "booking_refresh_failed": True,
+        }
+        if arguments.json_output:
+            _write_json(payload)
+        else:
+            _write_human_booking_options(
+                [], google_flights_search_url, google_flights_search_url, str(error)
+            )
+        return 0
 
     assert query is not None
     google_flights_search_url = _google_flights_search_url(query)
@@ -293,7 +301,12 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
         "ok": True,
         "selected_offer": _assessed_offer_as_dict(assess_offer(selected_offer, policy)),
         "booking_handoff_url": booking_handoff_url,
+        "booking_handoff_link_markdown": _markdown_link(booking_handoff_url),
         "booking_handoff_urls": separate_handoffs,
+        "booking_handoff_links_markdown": [
+            _markdown_link(url, f"Open ticket {index}")
+            for index, url in enumerate(separate_handoffs, start=1)
+        ],
         "google_flights_search_url": google_flights_search_url,
         "booking_options": [_booking_option_as_dict(option) for option in options],
     }
@@ -670,6 +683,12 @@ def _offer_as_dict(offer: FlightOffer) -> dict[str, object]:
         str(price) if price is not None else None for price in offer.component_prices
     ]
     payload["component_booking_urls"] = list(offer.component_booking_urls)
+    payload["booking_link_markdown"] = _markdown_link(offer.booking_url)
+    payload["component_booking_links_markdown"] = [
+        _markdown_link(url, f"Open ticket {index}")
+        for index, url in enumerate(offer.component_booking_urls, start=1)
+        if url
+    ]
     return payload
 
 
@@ -800,6 +819,7 @@ def _booking_option_as_dict(option: BookingOption) -> dict[str, object]:
         "booking_url": option.booking_url,
         "google_click_url": option.google_click_url,
         "handoff_url": option.handoff_url,
+        "handoff_link_markdown": _markdown_link(option.handoff_url),
     }
 
 
@@ -807,7 +827,13 @@ def _flexible_offer_as_dict(offer: FlexibleDateOffer) -> dict[str, object]:
     payload = asdict(offer)
     payload["price"] = str(offer.price)
     payload["nights"] = offer.nights
+    payload["booking_link_markdown"] = _markdown_link(offer.booking_url)
     return payload
+
+
+def _markdown_link(url: str | None, label: str = "Open") -> str | None:
+    """Return a ready-to-render link so agents never need to transcribe long URLs."""
+    return f"[{label}]({url})" if url else None
 
 
 def _watch_as_dict(watch: Watch) -> dict[str, object]:

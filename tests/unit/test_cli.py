@@ -17,7 +17,7 @@ from hermes_flight_finder.models import (
     PriceObservation,
     Watch,
 )
-from hermes_flight_finder.providers import BookingOptionsUnavailable
+from hermes_flight_finder.providers import BookingOptionsUnavailable, ProviderError
 from hermes_flight_finder.storage import JsonWatchRepository
 
 
@@ -105,6 +105,13 @@ class _OpenJawFallbackProvider(_FakeProvider):
                 booking_url=f"https://book.example.test/{suffix}",
             )
         ]
+
+
+class _FailedBookingProvider(_FakeProvider):
+    def booking_options(
+        self, query: FlightQuery, offer_index: int
+    ) -> tuple[FlightOffer, list[BookingOption]]:
+        raise ProviderError("Flight provider request failed")
 
 
 def test_help_exits_successfully(capsys: CaptureFixture[str]) -> None:
@@ -198,6 +205,10 @@ def test_open_jaw_search_marks_separate_ticket_fallback(capsys: CaptureFixture[s
     assert offer["component_booking_urls"] == [
         "https://book.example.test/outbound",
         "https://book.example.test/inbound",
+    ]
+    assert offer["component_booking_links_markdown"] == [
+        "[Open ticket 1](https://book.example.test/outbound)",
+        "[Open ticket 2](https://book.example.test/inbound)",
     ]
     assert "independent one-way bookings" in offer["booking_warning"]
 
@@ -351,6 +362,9 @@ def test_booking_options_returns_current_vendor_handoff(capsys: CaptureFixture[s
     assert payload["booking_handoff_url"] == (
         "https://www.google.com/travel/flights/booking?tfs=TEST"
     )
+    assert payload["booking_handoff_link_markdown"] == (
+        "[Open](https://www.google.com/travel/flights/booking?tfs=TEST)"
+    )
     assert payload["google_flights_search_url"] == (
         "https://www.google.com/travel/flights?hl=en&curr=EUR&"
         "q=Flights+to+NCE+from+HAM+on+2026-09-18+returning+2026-09-21"
@@ -365,6 +379,7 @@ def test_booking_options_returns_current_vendor_handoff(capsys: CaptureFixture[s
             "booking_url": "https://book.example.test/offer",
             "google_click_url": "https://google.example.test/offer",
             "handoff_url": "https://book.example.test/offer",
+            "handoff_link_markdown": "[Open](https://book.example.test/offer)",
         }
     ]
 
@@ -403,7 +418,7 @@ def test_booking_options_keeps_exact_handoff_when_vendor_options_fail(
     )
 
 
-def test_booking_options_returns_both_separate_ticket_handoffs(
+def test_booking_options_returns_route_fallback_when_refresh_fails(
     capsys: CaptureFixture[str],
 ) -> None:
     exit_code = main(
@@ -426,15 +441,17 @@ def test_booking_options_returns_both_separate_ticket_handoffs(
             "1",
             "--json",
         ],
-        provider=_OpenJawFallbackProvider(),
+        provider=_FailedBookingProvider(),
     )
 
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["booking_handoff_url"] is None
-    assert payload["booking_handoff_urls"] == [
-        "https://book.example.test/outbound",
-        "https://book.example.test/inbound",
-    ]
-    assert payload["selected_offer"]["booking_strategy"] == "separate_tickets"
-    assert "independent one-way bookings" in payload["booking_options_warning"]
+    assert payload["ok"] is True
+    assert payload["selected_offer"] is None
+    assert payload["booking_handoff_url"] == payload["google_flights_search_url"]
+    assert payload["booking_handoff_link_markdown"].startswith("[Open](https://")
+    assert "Flights+from+HAM+to+NCE" in payload["booking_handoff_url"]
+    assert "then+from+MRS+to+BER" in payload["booking_handoff_url"]
+    assert payload["booking_handoff_urls"] == []
+    assert payload["booking_refresh_failed"] is True
+    assert payload["booking_options_warning"] == "Flight provider request failed"

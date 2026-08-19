@@ -45,6 +45,7 @@ from hermes_flight_finder.models import (
     FlightQuery,
 )
 from hermes_flight_finder.providers.base import BookingOptionsUnavailable, ProviderError
+from hermes_flight_finder.providers.date_cache import DateSearchCache
 
 
 class _SearchClient(Protocol):
@@ -91,9 +92,13 @@ class FliFlightProvider:
         self,
         search_factory: Callable[[], object] | None = None,
         date_search_factory: Callable[[], object] | None = None,
+        date_cache: DateSearchCache | None = None,
     ) -> None:
         self._search_factory = search_factory or SearchFlights
         self._date_search_factory = date_search_factory or SearchDates
+        self._date_cache = date_cache or (
+            DateSearchCache() if date_search_factory is None else None
+        )
 
     def search(self, query: FlightQuery) -> list[FlightOffer]:
         """Map a domain query to `fli`, then normalize its response."""
@@ -171,24 +176,31 @@ class FliFlightProvider:
 
     def search_dates(self, query: FlexibleSearchQuery) -> list[FlexibleDateOffer]:
         """Search every requested trip duration through `fli`'s calendar API."""
+        cached = self._date_cache.get(query) if self._date_cache else None
+        if cached is not None:
+            return cached
         client = cast(_DateSearchClient, self._date_search_factory())
+        offers: list[FlexibleDateOffer]
         if query.is_open_jaw:
-            return self._search_open_jaw_dates(client, query)
-        offers: list[FlexibleDateOffer] = []
-        for nights in range(query.min_nights, query.max_nights + 1):
-            try:
-                raw_results = client.search(
-                    self._build_date_filters(query, nights),
-                    currency=query.currency,
-                )
-            except Exception as error:
-                raise ProviderError("Flight provider request failed") from error
-            if raw_results is None:
-                continue
-            if not isinstance(raw_results, list):
-                raise ProviderError("Flight provider returned an unexpected response")
-            results = cast(list[DatePrice], raw_results)
-            offers.extend(self._normalize_date_price(result, query) for result in results)
+            offers = self._search_open_jaw_dates(client, query)
+        else:
+            offers = []
+            for nights in range(query.min_nights, query.max_nights + 1):
+                try:
+                    raw_results = client.search(
+                        self._build_date_filters(query, nights),
+                        currency=query.currency,
+                    )
+                except Exception as error:
+                    raise ProviderError("Flight provider request failed") from error
+                if raw_results is None:
+                    continue
+                if not isinstance(raw_results, list):
+                    raise ProviderError("Flight provider returned an unexpected response")
+                results = cast(list[DatePrice], raw_results)
+                offers.extend(self._normalize_date_price(result, query) for result in results)
+        if self._date_cache:
+            self._date_cache.put(query, offers)
         return offers
 
     def _search_open_jaw_dates(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Protocol, cast
 
 import pytest
@@ -9,6 +10,7 @@ from fli.models import Airport, FlightSearchFilters, TripType
 
 from hermes_flight_finder.models import FlexibleSearchQuery, FlightQuery
 from hermes_flight_finder.providers import BookingOptionsUnavailable
+from hermes_flight_finder.providers.date_cache import DateSearchCache
 from hermes_flight_finder.providers.fli import FliFlightProvider
 
 
@@ -270,6 +272,28 @@ def test_provider_expands_each_requested_duration() -> None:
     assert [str(offer.price) for offer in offers] == ["98.0", "97.0", "96.0"]
     assert all(offer.booking_url for offer in offers)
     assert "Flights%20from%20HAM%20to%20NCE" in (offers[0].booking_url or "")
+
+
+def test_provider_reuses_a_recent_successful_date_search(tmp_path: Path) -> None:
+    client = _FakeDateSearchClient()
+    provider = FliFlightProvider(
+        date_search_factory=lambda: client,
+        date_cache=DateSearchCache(tmp_path),
+    )
+    query = FlexibleSearchQuery(
+        origin="HAM",
+        destination="NCE",
+        start_date=date.today() + timedelta(days=10),
+        end_date=date.today() + timedelta(days=40),
+        min_nights=2,
+        max_nights=3,
+    )
+
+    first = provider.search_dates(query)
+    second = provider.search_dates(query)
+
+    assert second == first
+    assert client.durations == [2, 3]
 
 
 def test_provider_combines_one_way_calendars_for_open_jaw_discovery() -> None:
