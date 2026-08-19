@@ -21,6 +21,8 @@ from hermes_flight_finder.models import (
     QualityStatus,
     WarningSeverity,
     Watch,
+    WatchHealth,
+    WatchHealthStatus,
 )
 from hermes_flight_finder.storage.base import StateCorruptError, WatchRepository
 
@@ -34,6 +36,7 @@ class JsonWatchRepository(WatchRepository):
         self._data_dir = data_dir or get_data_dir()
         self._state_path = self._data_dir / "state.json"
         self._history_path = self._data_dir / "history.json"
+        self._health_path = self._data_dir / "health.json"
 
     def list(self) -> list[Watch]:
         """List all saved watches."""
@@ -66,6 +69,8 @@ class JsonWatchRepository(WatchRepository):
             [item for item in observations if item.watch_id != watch_id],
             [item for item in alerts if item.watch_id != watch_id],
         )
+        health = [item for item in self._load_health() if item.watch_id != watch_id]
+        self._write_health(health)
         return True
 
     def list_observations(self, watch_id: str) -> list[PriceObservation]:
@@ -85,6 +90,34 @@ class JsonWatchRepository(WatchRepository):
         observations, alerts = self._load_history()
         alerts.append(alert)
         self._write_history(observations, alerts)
+
+    def get_health(self, watch_id: str) -> WatchHealth | None:
+        return next((item for item in self._load_health() if item.watch_id == watch_id), None)
+
+    def record_health(self, health: WatchHealth) -> None:
+        records = self._load_health()
+        records = [item for item in records if item.watch_id != health.watch_id]
+        records.append(health)
+        self._write_health(records)
+
+    def _load_health(self) -> list[WatchHealth]:
+        if not self._health_path.exists():
+            return []
+        try:
+            decoded = json.loads(self._health_path.read_text(encoding="utf-8"))
+            if not isinstance(decoded, dict):
+                raise ValueError("health must be an object")
+            return [
+                _health_from_dict(item)
+                for item in _object_list(cast(dict[str, object], decoded), "watches")
+            ]
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise StateCorruptError("Local health file is corrupt") from error
+
+    def _write_health(self, records: list[WatchHealth]) -> None:
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        payload = {"watches": [_health_as_dict(item) for item in records]}
+        _atomic_write(self._health_path, json.dumps(payload, indent=2, sort_keys=True))
 
     def _load_history(self) -> tuple[list[PriceObservation], list[AlertRecord]]:
         if not self._history_path.exists():
@@ -383,6 +416,29 @@ def _alert_from_dict(raw: dict[str, object]) -> AlertRecord:
         datetime.fromisoformat(_required_str(raw, "departure_date")).date(),
         datetime.fromisoformat(_required_str(raw, "return_date")).date(),
         datetime.fromisoformat(_required_str(raw, "alerted_at")),
+    )
+
+
+def _health_as_dict(item: WatchHealth) -> dict[str, object]:
+    return {
+        "watch_id": item.watch_id,
+        "status": item.status.value,
+        "last_attempted_at": item.last_attempted_at.isoformat(),
+        "last_success_at": item.last_success_at.isoformat() if item.last_success_at else None,
+        "error_code": item.error_code,
+        "error_message": item.error_message,
+    }
+
+
+def _health_from_dict(raw: dict[str, object]) -> WatchHealth:
+    last_success_at = _optional_nullable_str(raw.get("last_success_at"), "last_success_at")
+    return WatchHealth(
+        watch_id=_required_str(raw, "watch_id"),
+        status=WatchHealthStatus(_required_str(raw, "status")),
+        last_attempted_at=datetime.fromisoformat(_required_str(raw, "last_attempted_at")),
+        last_success_at=datetime.fromisoformat(last_success_at) if last_success_at else None,
+        error_code=_optional_nullable_str(raw.get("error_code"), "error_code"),
+        error_message=_optional_nullable_str(raw.get("error_message"), "error_message"),
     )
 
 

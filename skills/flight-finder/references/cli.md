@@ -24,20 +24,22 @@ offers, it searches the two directions independently. Fallback offers have
 hermes-flights dates --from IATA[,IATA] --to IATA[,IATA] --start YYYY-MM-DD --end YYYY-MM-DD --min-nights N --max-nights N [--return-from IATA[,IATA]] [--return-to IATA[,IATA]] [--nonstop|--max-stops 0|1|2|any] [--currency ISO] [quality options] [--quality-candidates N] --json
 ```
 
-Success contains price/date offers with `departure_date`, `return_date`, `nights`, a `booking_url`,
-and a ready-to-render `booking_link_markdown` that opens Google Flights for that route and date pair.
-This is a date-search handoff, not a preselected itinerary. Agents should copy the Markdown field
-verbatim instead of transcribing its URL.
-
-The cheapest `N` date pairs are also searched as concrete itineraries. They appear in
-`quality_candidates`; `recommended_quality_candidate` is the best practical option after warning
-evaluation, not necessarily the lowest calendar price.
+Calendar data is used only internally to discover candidate date pairs. Success contains concrete
+itineraries in `results`, each with `departure_date`, `return_date`, `nights`, a concrete `price`,
+quality warnings, a `booking_url`, and a ready-to-render `booking_link_markdown` for the exact
+itinerary. Its label is a chain icon. Agents should copy the Markdown field verbatim instead of
+transcribing its URL. `recommended_result` is the best practical option after warning evaluation.
+Calendar prices are deliberately not exposed.
 Successful non-empty calendar responses are cached for 15 minutes. This stabilizes identical
 immediate reruns; concrete candidate searches are not served from this cache.
 For an open jaw, two one-way calendars generate candidate date pairs, but each concrete candidate
 is searched as multi-city before the separate-ticket fallback can activate.
 
 ## Booking Handoff
+
+Use this command only when the user explicitly requests airline-direct or OTA vendor choices.
+Ordinary search responses already contain exact itinerary handoffs and do not need another provider
+request.
 
 ```bash
 hermes-flights booking options --from IATA[,IATA] --to IATA[,IATA] --departure YYYY-MM-DD [--return-from IATA[,IATA]] [--return-to IATA[,IATA]] [--return YYYY-MM-DD] [--cabin ECONOMY|PREMIUM_ECONOMY|BUSINESS|FIRST] [--passengers N] [--currency ISO] [--nonstop|--max-stops 0|1|2|any] [quality options] [--airlines XX,YY] [--departure-window START-END] [--offer NUMBER] --json
@@ -63,6 +65,10 @@ options` for that result.
 Each option includes vendor details, refreshed price when available, and full direct or Google
 click-through URLs when supplied by the provider. `google_flights_search_url` is always a valid
 fallback handoff. The CLI never opens a URL or completes a booking.
+
+Provider failures use stable categories such as `connection_failed`, `timeout`, `rate_limited`,
+`request_refused`, `provider_unavailable`, and `invalid_response`. User-facing messages intentionally
+omit transport status codes.
 
 ## Quality Options
 
@@ -98,4 +104,5 @@ lowest price since tracking started; each observation includes a `source` (`fli`
 `watch check` returns `checked` and `alerts`. Each alert includes a price, dates, optional prior
 best and percentage drop, deterministic `reasons` such as `target_price` or `price_drop`, and the
 chosen concrete itinerary's quality status and warnings. The default recurring candidate budget is
-three.
+three. It also returns per-watch `health`: `live`, `empty`, `stale`, or `failed`, with attempt and
+last-success timestamps. Provider failures are isolated to the affected watch.

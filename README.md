@@ -31,7 +31,7 @@ history, deterministic alerts, the Hermes skill bundle, and cron guidance are av
 - [x] Configurable itinerary-quality rules and warnings: long or overnight layovers, airport changes, self-transfers, and impractical total journey times
 - [x] Multi-airport, open-jaw, and road-trip itineraries, with a warned separate-ticket fallback only when multi-city returns no matches
 - [ ] Flexible-date price grid for comparing possible trip-date combinations
-- [ ] Watch health, stale-data status, and provider error visibility
+- [x] Watch health, stale-data status, and provider error visibility
 
 ### P1: Price Intelligence And Sharing
 
@@ -128,16 +128,18 @@ uv run hermes-flights dates \
   --json
 ```
 
-The command makes one calendar request per requested trip duration, then merges duplicate date
-pairs and orders the results by price. Every result includes a Google Flights route-and-date link.
-JSON responses also include ready-to-render Markdown link fields so an agent can copy long booking
-handoffs without transcribing or truncating their encoded itinerary tokens.
+The command uses calendar requests internally to discover promising date pairs, then searches the
+five cheapest pairs as concrete itineraries. Calendar prices are not exposed because they can be
+lower than any practical itinerary a user can select. Every public result contains a concrete
+price, itinerary details, quality warnings, and an exact Google Flights handoff. JSON responses
+also include ready-to-render Markdown link fields so an agent can copy long booking handoffs
+without transcribing or truncating their encoded itinerary tokens.
 Successful non-empty calendar responses are cached locally for 15 minutes so identical immediate
 searches remain stable when the upstream calendar endpoint is intermittent. Concrete itinerary
 checks still run on every invocation.
-By default, the five cheapest date pairs are also searched as concrete itineraries and returned in
-`quality_candidates`; `recommended_quality_candidate` prefers a practical itinerary over a cheaper
-one with severe warnings. Change the request budget with `--quality-candidates N`.
+Concrete itineraries are returned in `results`; `recommended_result` prefers a practical itinerary
+over a cheaper one with severe warnings. Change the candidate request budget with
+`--quality-candidates N`.
 For flexible open jaws, two one-way calendars identify promising date pairs, but every concrete
 candidate is still searched as multi-city before the separate-ticket fallback can activate.
 
@@ -164,10 +166,10 @@ never silently removed by these policies.
 
 ## Booking Handoff
 
-Use `booking options` after choosing a numbered specific-date single-itinerary search result, or
-automatically for a single-itinerary top recommendation from a flexible-date search. Separate-ticket
-results already contain one exact component link per independent ticket and should not be refreshed
-through this command. It reruns the search and
+Use `booking options` only when the user explicitly requests current airline-direct or OTA vendor
+choices for a numbered single-itinerary result. Ordinary search results already include exact
+Google Flights itinerary handoffs. Separate-ticket results contain one exact component link per
+independent ticket and should not be refreshed through this command. It reruns the search and
 returns a deterministic Google Flights link for the selected itinerary plus current airline-direct
 or OTA links when available. If an exact itinerary link cannot be constructed, the response uses a
 route-and-date Google Flights search handoff instead. It never opens a link or makes a purchase. Booking prices and availability can change before the provider
@@ -207,7 +209,12 @@ another local directory.
 `hermes-flights watch check --json` searches every saved watch, concretely evaluates the cheapest
 three date pairs by default, stores the best practical current itinerary, and returns alerts only
 when a target price is met or a configured percentage drop occurs. Use `--quality-candidates N`
-to change that recurring request budget. Observation and alert JSON includes warning details.
+to change that recurring request budget. Observation and alert JSON includes warning details. Each
+watch also returns independent `live`, `empty`, `stale`, or `failed` health, so one provider failure does not
+cancel checks for other watches. Failure messages distinguish connection, timeout, limiting,
+refusal, unavailable-service, and malformed-response conditions without exposing transport codes.
+An `empty` response is described conservatively because the provider does not distinguish a genuine
+no-results search from every incomplete response shape.
 The first check establishes a baseline unless its target price is already met; repeated alerts for
 the same price and dates are suppressed.
 

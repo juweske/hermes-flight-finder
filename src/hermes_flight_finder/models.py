@@ -58,6 +58,15 @@ class BookingStrategy(StrEnum):
     SEPARATE_TICKETS = "separate_tickets"
 
 
+class WatchHealthStatus(StrEnum):
+    """Latest provider outcome for a saved watch."""
+
+    LIVE = "live"
+    EMPTY = "empty"
+    STALE = "stale"
+    FAILED = "failed"
+
+
 def _validate_iata(code: str, field_name: str) -> str:
     normalized = code.upper()
     if not fullmatch(r"[A-Z]{3}", normalized):
@@ -547,11 +556,24 @@ class Deal:
 
 
 @dataclass(frozen=True, slots=True)
+class WatchHealth:
+    """Persisted status of the latest attempt to check one watch."""
+
+    watch_id: str
+    status: WatchHealthStatus
+    last_attempted_at: datetime
+    last_success_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CheckResult:
     """The structured outcome of checking every saved watch."""
 
     checked: int
     alerts: tuple[Deal, ...]
+    health: tuple[WatchHealth, ...] = ()
 
 
 def new_watch_id(origin: str, destination: str) -> str:

@@ -8,8 +8,9 @@ command that a Hermes cron job invokes.
 
 1. Run `hermes-flights watch check --json`.
 2. If the CLI returns `ok: false`, report the error. Do not use a silence token.
-3. If `alerts` is empty, respond with exactly `[SILENT]`.
-4. If alerts exist, send a concise alert for each result with route, dates, price, and available
+3. Report every `stale` or `failed` health item with its error and last successful check when present.
+4. If `alerts` is empty and no health item is stale or failed, respond with exactly `[SILENT]`.
+5. If alerts exist, send a concise alert for each result with route, dates, price, and available
    comparison details.
 
 `[SILENT]` suppresses outbound delivery only when it is the complete final response. It prevents
@@ -20,7 +21,7 @@ routine quiet checks from creating chat notifications.
 After installing the `flight-finder` skill and the `hermes-flights` executable:
 
 ```bash
-hermes cron create "every 6h" "Run hermes-flights watch check --json. If ok is false, report the error. If alerts is empty, respond with exactly [SILENT]. Otherwise report each alert concisely with route, dates, price, and improvement." --skill flight-finder --name "flight-price-checks" --deliver telegram
+hermes cron create "every 6h" "Run hermes-flights watch check --json. If ok is false, report the error. Report stale or failed health items. If alerts is empty and no health item is stale or failed, respond with exactly [SILENT]. Otherwise report each alert concisely with route, dates, price, and improvement." --skill flight-finder --name "flight-price-checks" --deliver telegram
 ```
 
 Use `--deliver origin` for the source chat, or another configured Hermes delivery target. Confirm

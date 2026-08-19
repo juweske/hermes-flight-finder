@@ -7,9 +7,14 @@ from typing import Protocol, cast
 
 import pytest
 from fli.models import Airport, FlightSearchFilters, TripType
+from fli.search.exceptions import SearchConnectionError, SearchHTTPError, SearchTimeoutError
 
 from hermes_flight_finder.models import FlexibleSearchQuery, FlightQuery
-from hermes_flight_finder.providers import BookingOptionsUnavailable
+from hermes_flight_finder.providers import (
+    BookingOptionsUnavailable,
+    ProviderError,
+    ProviderErrorCode,
+)
 from hermes_flight_finder.providers.date_cache import DateSearchCache
 from hermes_flight_finder.providers.fli import FliFlightProvider
 
@@ -77,6 +82,8 @@ class _FakeSearchClient:
     def search(self, filters: object, top_n: int = 5, currency: str | None = None) -> object:
         self.filters = filters
         self.currency = currency
+        if isinstance(self.results, Exception):
+            raise self.results
         return self.results
 
     def get_booking_options(
@@ -294,6 +301,8 @@ def test_provider_reuses_a_recent_successful_date_search(tmp_path: Path) -> None
 
     assert second == first
     assert client.durations == [2, 3]
+    assert provider.last_date_search_status == "cached"
+    assert provider.last_date_search_at is not None
 
 
 def test_provider_combines_one_way_calendars_for_open_jaw_discovery() -> None:
@@ -396,3 +405,63 @@ def test_provider_discards_truncated_booking_placeholders() -> None:
     assert options[0].booking_url is None
     assert options[0].google_click_url is None
     assert options[0].handoff_url is None
+
+
+@pytest.mark.parametrize(
+    ("provider_exception", "expected_code", "expected_text"),
+    [
+        (
+            SearchConnectionError("dns"),
+            ProviderErrorCode.CONNECTION_FAILED,
+            "Could not reach",
+        ),
+        (SearchTimeoutError("slow"), ProviderErrorCode.TIMEOUT, "did not answer in time"),
+        (
+            SearchHTTPError("limited", status_code=429),
+            ProviderErrorCode.RATE_LIMITED,
+            "limiting requests",
+        ),
+        (
+            SearchHTTPError("forbidden", status_code=403),
+            ProviderErrorCode.REQUEST_REFUSED,
+            "refused the request",
+        ),
+        (
+            SearchHTTPError("down", status_code=503),
+            ProviderErrorCode.PROVIDER_UNAVAILABLE,
+            "temporarily unavailable",
+        ),
+    ],
+)
+def test_provider_maps_failures_without_exposing_http_codes(
+    provider_exception: Exception,
+    expected_code: ProviderErrorCode,
+    expected_text: str,
+) -> None:
+    provider = FliFlightProvider(search_factory=lambda: _FakeSearchClient(provider_exception))
+    query = FlightQuery(
+        origin="HAM",
+        destination="NCE",
+        departure_date=date.today() + timedelta(days=10),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        provider.search(query)
+
+    assert exc_info.value.code == expected_code
+    assert expected_text in str(exc_info.value)
+    assert not any(code in str(exc_info.value) for code in ("403", "429", "503"))
+
+
+def test_provider_marks_malformed_responses() -> None:
+    provider = FliFlightProvider(search_factory=lambda: _FakeSearchClient({"unexpected": True}))
+    query = FlightQuery(
+        origin="HAM",
+        destination="NCE",
+        departure_date=date.today() + timedelta(days=10),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        provider.search(query)
+
+    assert exc_info.value.code == ProviderErrorCode.INVALID_RESPONSE

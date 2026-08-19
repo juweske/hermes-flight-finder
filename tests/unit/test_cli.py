@@ -237,11 +237,18 @@ def test_dates_writes_stable_json(capsys: CaptureFixture[str]) -> None:
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
-    assert payload["offers"][0]["nights"] == 3
-    assert payload["offers"][0]["price"] == "79"
-    assert payload["offers"][0]["booking_url"].startswith("https://www.google.com/travel/flights?")
-    assert payload["quality_candidates"][0]["recommended_offer"]["price"] == "89"
-    assert payload["recommended_quality_candidate"]["date_offer"]["nights"] == 3
+    assert payload["provider_message"] is None
+    assert payload["evaluated_date_pairs"] == 1
+    assert payload["results"][0]["nights"] == 3
+    assert payload["results"][0]["price"] == "89"
+    assert payload["results"][0]["booking_url"].startswith(
+        "https://www.google.com/travel/flights/booking?"
+    )
+    assert payload["results"][0]["booking_link_markdown"].startswith("[🔗](https://")
+    assert payload["recommended_result"] == payload["results"][0]
+    assert "offers" not in payload
+    assert "quality_candidates" not in payload
+    assert '"79"' not in json.dumps(payload)
 
 
 def test_watch_lifecycle_writes_stable_json(capsys: CaptureFixture[str], tmp_path: Path) -> None:
@@ -282,6 +289,33 @@ def test_watch_lifecycle_writes_stable_json(capsys: CaptureFixture[str], tmp_pat
     remove_exit_code = main(["watch", "remove", "ham-nce-weekend", "--json"], repository=repository)
     assert remove_exit_code == 0
     assert json.loads(capsys.readouterr().out)["removed_id"] == "ham-nce-weekend"
+
+
+def test_watch_check_reports_per_watch_health(capsys: CaptureFixture[str], tmp_path: Path) -> None:
+    repository = JsonWatchRepository(tmp_path)
+    repository.save(
+        Watch(
+            id="ham-nce-health",
+            origin="HAM",
+            destination="NCE",
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 10, 1),
+            min_nights=2,
+            max_nights=5,
+        )
+    )
+
+    exit_code = main(
+        ["watch", "check", "--quality-candidates", "1", "--json"],
+        provider=_FakeProvider(),
+        repository=repository,
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["health"][0]["watch_id"] == "ham-nce-health"
+    assert payload["health"][0]["status"] == "live"
+    assert payload["health"][0]["error"] is None
 
 
 def test_watch_history_reports_lowest_price_since_tracking_started(
@@ -416,6 +450,7 @@ def test_booking_options_keeps_exact_handoff_when_vendor_options_fail(
     assert payload["booking_options_warning"] == (
         "Vendor booking options are temporarily unavailable"
     )
+    assert payload["booking_options_error"]["code"] == "provider_unavailable"
 
 
 def test_booking_options_returns_route_fallback_when_refresh_fails(

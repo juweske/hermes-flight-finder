@@ -69,6 +69,10 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
 - Never invent availability, fares, routes, dates, airlines, stops, watch status, or price
   history. Only report facts returned by `hermes-flights`.
 - Treat `{ "ok": false }` as a failure, not an empty search. Explain the returned error briefly.
+- Use `provider_status` exactly as returned. `cached` results must be identified as cached; never
+  describe them as a new live provider response. For `empty`, repeat the returned
+  `provider_message`; do not claim that no flights exist because an incomplete provider response can
+  look identical. Do not expose or guess HTTP status codes.
 - Treat `booking_options_warning` with `{ "ok": true }` as degraded success for
   `booking_strategy: "single_itinerary"`. Show the returned `booking_handoff_url` immediately and briefly note that
   vendor-specific options are unavailable; do not report the entire booking handoff as failed.
@@ -77,7 +81,9 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
 - Read the active `flight_finder` profile configuration before building commands. Use its home
   airports and currency when the user omits them. Pass its layover, airport-change, overnight,
   self-transfer, maximum-stop, and candidate-limit values to the CLI. An explicit request in the
-  current conversation always overrides the saved profile value.
+  current conversation always overrides the saved profile value. Apply values in this exact order:
+  current user request, then profile configuration, then CLI default. Never infer currency or home
+  airport from the language of the conversation.
 - Append `--acceptable-layover`, `--airport-changes`, `--overnight-layovers`, `--self-transfers`,
   and `--max-stops` to every `search`, `dates`, and `booking options` command. Append
   `--quality-candidates` to `dates` using `interactive_quality_candidates`, and to `watch check`
@@ -95,7 +101,7 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
   one user-visible response after all tool calls finish. Never send progress messages such as
   "I am searching", "I will fetch the link", or "I will send the full link next".
 - Whenever a table is used, it must have exactly these five columns in this order:
-  `Abflug | Nächte | Rückkehr | Ab-Preis | Link`. Do not create any other table layout. Use short
+  `Abflug | Nächte | Rückkehr | Preis | Link`. Do not create any other table layout. Use short
   bullets, not another table, for concrete itinerary details such as airlines, times, and stops.
 - Show booking links immediately in the same response as the flight results. This is mandatory
   whenever a concrete recommended itinerary is available. Never ask whether the user wants a link, offer to
@@ -103,8 +109,9 @@ comparison and alert logic; interpret its JSON rather than reimplementing it.
 - Never transcribe or reconstruct a booking URL. Copy the CLI's ready-to-render
   `booking_link_markdown`, `booking_handoff_link_markdown`, or
   `component_booking_links_markdown` value verbatim into the response. Never summarize, truncate,
-  alter, or add ellipses to one of these values. In flexible-date tables, use each offer's complete
-  `booking_link_markdown` value in the `Link` cell. Print
+  alter, or add ellipses to one of these values. In flexible-date tables, use each result's complete
+  `booking_link_markdown` value in the `Link` cell. The CLI pre-renders this as a chain icon link;
+  copy it without changing its label or URL. Print
   the recommended concrete itinerary's complete `booking_url` or `booking_handoff_url` on its own
   line directly beneath that itinerary by copying its corresponding Markdown field. Never ask the
   user to request the full link. If no ready-to-render field accompanies a URL, use the shorter
@@ -144,20 +151,18 @@ Use `dates` when the user gives a date window and a trip-duration range.
 hermes-flights dates --from HAM --to NCE --start 2026-08-20 --end 2026-10-15 --min-nights 2 --max-nights 5 --nonstop --currency EUR --json
 ```
 
-The returned `offers` are calendar price/date pairs, not guaranteed itinerary details. Render them
-in one table with exactly `Abflug | Nächte | Rückkehr | Ab-Preis | Link`. Every row must contain
-that offer's returned `booking_link_markdown`; this opens Google Flights for the route and date pair but does
-not preselect a concrete itinerary.
+The CLI uses calendar prices internally to discover candidate date pairs, but it does not expose
+those prices because they may not correspond to a practical bookable itinerary. Render the returned
+concrete `results` in one table with exactly
+`Abflug | Nächte | Rückkehr | Preis | Link`. Every row must contain that result's complete
+`booking_link_markdown`, which opens the exact itinerary. Never describe these as calendar or
+"from" prices.
 
-Use `quality_candidates` for concrete itinerary details and
-`recommended_quality_candidate` for the default recommendation; do not recommend the first
-calendar row merely because it has the lowest from-price. For an exploratory request such as a
-flexible weekend trip, prepare the complete five-column table, then automatically run `booking options`
-for the recommended candidate only when it uses `booking_strategy: "single_itinerary"`, using its
-`recommended_offer_number` and the same route,
-cabin, passenger, airline, stop, and currency constraints. Include `booking_handoff_url` directly
-beneath the recommended itinerary. If it is unavailable, include `google_flights_search_url` on its
-own line. Finish all commands before sending exactly one response unless the user explicitly asks only for comparison or says not to retrieve a booking handoff.
+Use `recommended_result` for the default recommendation. For an exploratory request such as a
+flexible weekend trip, prepare the complete five-column table from `results`. Run `booking options`
+for the recommended result only when the user explicitly requests airline or vendor booking
+choices. Otherwise, use its existing `booking_link_markdown` immediately; do not repeat the search
+merely to obtain another handoff. Finish all commands before sending exactly one response.
 
 For flexible open jaws, the calendar stage uses one-way price calendars only to discover promising
 date pairs. The concrete candidate search remains multi-city-first. Present separate-ticket wording
@@ -165,9 +170,10 @@ only if the concrete offer explicitly uses the separate-ticket strategy.
 
 ### Booking Handoff
 
-When the user chooses a numbered result from a specific-date search and asks to book it, run
-`booking options` with the same route, dates, filters, and `--offer` number. Also use it
-automatically for a single-itinerary top recommendation from an exploratory flexible-date search.
+When the user chooses a numbered result and requests airline-direct or vendor choices, run
+`booking options` with the same route, dates, filters, and `--offer` number. A normal request for
+flights or a booking link should use the exact `booking_link_markdown` already returned by `search`
+or `dates` without rerunning the provider.
 Do not run it for `separate_tickets`; use the component links from the search response. Present the
 returned `booking_handoff_link_markdown` first. It is the selected itinerary's Google Flights booking page
 when available and otherwise the route/date search fallback. Then present useful vendor options,
@@ -198,6 +204,12 @@ in the same conversation.
 Run `hermes-flights watch check` with the profile's quality flags and
 `--quality-candidates <watch_quality_candidates> --json`.
 
+Read every item in `health`. `live` means the provider answered with a usable itinerary, `empty`
+means it returned no offers but does not prove that no flights exist, `stale` means the latest attempt
+failed but an older successful result exists, and `failed` means no successful result is available.
+Report stale and failed watches with their returned error messages and last successful check when
+present; do not expose or guess HTTP status codes. One failed watch does not invalidate successful
+checks for other watches.
 If `alerts` is empty, report that no new deal met the configured conditions. If alerts are present,
 report route from the saved watch, travel dates, current price, prior best when provided, the
 reported reasons, and any returned warnings. Do not infer an airline when the alert does not
@@ -209,10 +221,12 @@ Hermes owns scheduling. Do not add a scheduler to the Python application. When t
 asks to schedule checks, create a Hermes cron job that loads this skill and uses this task prompt:
 
 ```text
-Run hermes-flights watch check --json. If the command reports ok false, report the error. If alerts
-is empty, respond with exactly [SILENT]. If alerts are present, send a concise notification for
-each deal with the saved route, dates, price, previous best or percentage drop when present, and
-stops only when returned. Never invent missing fields.
+Run hermes-flights watch check --json. If the command reports ok false, report the error. Report
+every stale or failed health item with its route, error message, and last successful check when
+present. If alerts is empty and no health item is stale or failed, respond with exactly [SILENT].
+If alerts are present, send a concise notification for each deal with the saved route, dates, price,
+previous best or percentage drop when present, and stops only when returned. Never invent missing
+fields or HTTP status codes.
 ```
 
 Example standalone CLI setup:

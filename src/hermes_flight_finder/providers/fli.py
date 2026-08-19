@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol, cast
 from urllib.parse import parse_qs, quote, urlsplit
@@ -33,6 +33,7 @@ from fli.models import (
 from fli.models import Layover as FliLayover
 from fli.models import MaxStops as FliMaxStops
 from fli.search import DatePrice, SearchDates, SearchFlights
+from fli.search.exceptions import SearchConnectionError, SearchHTTPError, SearchTimeoutError
 
 from hermes_flight_finder.models import (
     BookingOption,
@@ -44,7 +45,11 @@ from hermes_flight_finder.models import (
     FlightOffer,
     FlightQuery,
 )
-from hermes_flight_finder.providers.base import BookingOptionsUnavailable, ProviderError
+from hermes_flight_finder.providers.base import (
+    BookingOptionsUnavailable,
+    ProviderError,
+    ProviderErrorCode,
+)
 from hermes_flight_finder.providers.date_cache import DateSearchCache
 
 
@@ -99,6 +104,8 @@ class FliFlightProvider:
         self._date_cache = date_cache or (
             DateSearchCache() if date_search_factory is None else None
         )
+        self.last_date_search_status = "live"
+        self.last_date_search_at: datetime | None = None
 
     def search(self, query: FlightQuery) -> list[FlightOffer]:
         """Map a domain query to `fli`, then normalize its response."""
@@ -107,12 +114,12 @@ class FliFlightProvider:
             client = cast(_SearchClient, self._search_factory())
             raw_results = client.search(filters, currency=query.currency)
         except Exception as error:
-            raise ProviderError("Flight provider request failed") from error
+            raise _provider_error(error) from error
 
         if raw_results is None:
             return []
         if not isinstance(raw_results, list):
-            raise ProviderError("Flight provider returned an unexpected response")
+            raise _invalid_response_error()
         results = cast(list[FliFlightResult | tuple[FliFlightResult, ...]], raw_results)
         return [
             self._normalize_itinerary(
@@ -131,12 +138,15 @@ class FliFlightProvider:
             client = cast(_SearchClient, self._search_factory())
             raw_results = client.search(filters, currency=query.currency)
         except Exception as error:
-            raise ProviderError("Flight provider request failed") from error
+            raise _provider_error(error) from error
 
         if raw_results is None:
-            raise ProviderError("Flight provider found no flight offers to book")
+            raise ProviderError(
+                "The flight provider returned no matching flights to book.",
+                ProviderErrorCode.NO_RESULTS,
+            )
         if not isinstance(raw_results, list):
-            raise ProviderError("Flight provider returned an unexpected response")
+            raise _invalid_response_error()
         ranked = sorted(
             (
                 (
@@ -161,13 +171,13 @@ class FliFlightProvider:
                 raise BookingOptionsUnavailable(
                     "Vendor booking options are temporarily unavailable", selected_offer
                 ) from error
-            raise ProviderError("Flight provider could not retrieve booking options") from error
+            raise _provider_error(error) from error
         if not isinstance(raw_options, list):
             if selected_offer.booking_url:
                 raise BookingOptionsUnavailable(
                     "Vendor booking options returned an unexpected response", selected_offer
                 )
-            raise ProviderError("Flight provider returned unexpected booking options")
+            raise _invalid_response_error()
         return selected_offer, [
             self._normalize_booking_option(option)
             for option in cast(list[FliBookingOption], raw_options)
@@ -178,6 +188,8 @@ class FliFlightProvider:
         """Search every requested trip duration through `fli`'s calendar API."""
         cached = self._date_cache.get(query) if self._date_cache else None
         if cached is not None:
+            self.last_date_search_status = "cached"
+            self.last_date_search_at = self._date_cache.last_hit_at if self._date_cache else None
             return cached
         client = cast(_DateSearchClient, self._date_search_factory())
         offers: list[FlexibleDateOffer]
@@ -192,15 +204,17 @@ class FliFlightProvider:
                         currency=query.currency,
                     )
                 except Exception as error:
-                    raise ProviderError("Flight provider request failed") from error
+                    raise _provider_error(error) from error
                 if raw_results is None:
                     continue
                 if not isinstance(raw_results, list):
-                    raise ProviderError("Flight provider returned an unexpected response")
+                    raise _invalid_response_error()
                 results = cast(list[DatePrice], raw_results)
                 offers.extend(self._normalize_date_price(result, query) for result in results)
         if self._date_cache:
             self._date_cache.put(query, offers)
+        self.last_date_search_status = "live" if offers else "empty"
+        self.last_date_search_at = datetime.now(UTC)
         return offers
 
     def _search_open_jaw_dates(
@@ -228,7 +242,7 @@ class FliFlightProvider:
                 currency=query.currency,
             )
         except Exception as error:
-            raise ProviderError("Flight provider request failed") from error
+            raise _provider_error(error) from error
         outbound = _one_way_date_prices(outbound_raw)
         inbound = _one_way_date_prices(inbound_raw)
         offers: list[FlexibleDateOffer] = []
@@ -339,7 +353,7 @@ class FliFlightProvider:
     ) -> FlightOffer:
         parts = result if isinstance(result, tuple) else (result,)
         if not parts:
-            raise ProviderError("Flight provider returned an empty itinerary")
+            raise _invalid_response_error()
 
         legs: list[FlightLeg] = []
         journeys: list[FlightJourney] = []
@@ -394,7 +408,7 @@ class FliFlightProvider:
         raw_price: DatePrice, query: FlexibleSearchQuery
     ) -> FlexibleDateOffer:
         if len(raw_price.date) != 2:
-            raise ProviderError("Flight provider returned an unexpected date result")
+            raise _invalid_response_error()
         departure_at, return_at = raw_price.date
         booking_url = google_flights_url(
             query.origin,
@@ -446,6 +460,46 @@ def _offer_sort_key(offer: FlightOffer) -> tuple[bool, Decimal, int]:
     return (offer.price is None, offer.price or Decimal(), offer.duration_minutes)
 
 
+def _provider_error(error: Exception) -> ProviderError:
+    """Map provider internals to stable, non-HTTP user-facing failures."""
+    if isinstance(error, (SearchTimeoutError, TimeoutError)):
+        return ProviderError(
+            "The flight provider did not answer in time. Try again later.",
+            ProviderErrorCode.TIMEOUT,
+        )
+    if isinstance(error, SearchConnectionError):
+        return ProviderError(
+            "Could not reach the flight provider. Check the network connection and try again.",
+            ProviderErrorCode.CONNECTION_FAILED,
+        )
+    if isinstance(error, SearchHTTPError):
+        if error.status_code == 429:
+            return ProviderError(
+                "The flight provider is temporarily limiting requests. Try again later.",
+                ProviderErrorCode.RATE_LIMITED,
+            )
+        if error.status_code in {401, 403}:
+            return ProviderError(
+                "The flight provider refused the request. Try again later.",
+                ProviderErrorCode.REQUEST_REFUSED,
+            )
+        return ProviderError(
+            "The flight provider is temporarily unavailable. Try again later.",
+            ProviderErrorCode.PROVIDER_UNAVAILABLE,
+        )
+    return ProviderError(
+        "The flight provider could not complete the request. Try again later.",
+        ProviderErrorCode.PROVIDER_UNAVAILABLE,
+    )
+
+
+def _invalid_response_error() -> ProviderError:
+    return ProviderError(
+        "The flight provider returned data that could not be understood.",
+        ProviderErrorCode.INVALID_RESPONSE,
+    )
+
+
 def _segment(
     origins: str | tuple[str, ...],
     destinations: str | tuple[str, ...],
@@ -481,7 +535,7 @@ def _normalize_leg(raw_leg: FliFlightLeg) -> FlightLeg:
             duration_minutes=raw_leg.duration,
         )
     except (AttributeError, TypeError) as error:
-        raise ProviderError("Flight provider returned an unexpected flight leg") from error
+        raise _invalid_response_error() from error
 
 
 def _normalize_layover(raw_layover: FliLayover) -> FlightLayover:
@@ -494,7 +548,7 @@ def _normalize_layover(raw_layover: FliLayover) -> FlightLayover:
             airport_change=bool(raw_layover.change_of_airport),
         )
     except (AttributeError, TypeError, ValueError) as error:
-        raise ProviderError("Flight provider returned an unexpected layover") from error
+        raise _invalid_response_error() from error
 
 
 def _one_way_date_prices(
@@ -503,11 +557,11 @@ def _one_way_date_prices(
     if raw_results is None:
         return {}
     if not isinstance(raw_results, list):
-        raise ProviderError("Flight provider returned an unexpected date response")
+        raise _invalid_response_error()
     prices: dict[date, tuple[Decimal, str | None]] = {}
     for item in cast(list[DatePrice], raw_results):
         if len(item.date) != 1:
-            raise ProviderError("Flight provider returned an unexpected one-way date result")
+            raise _invalid_response_error()
         travel_date = item.date[0].date()
         price = Decimal(str(item.price))
         current = prices.get(travel_date)

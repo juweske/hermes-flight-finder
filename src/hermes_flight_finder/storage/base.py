@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from hermes_flight_finder.models import AlertRecord, PriceObservation, Watch
+from hermes_flight_finder.models import AlertRecord, PriceObservation, Watch, WatchHealth
 
 
 class StorageError(Exception):
@@ -41,3 +41,7 @@ class WatchRepository(Protocol):
     def list_alerts(self, watch_id: str) -> list[AlertRecord]: ...
 
     def record_alert(self, alert: AlertRecord) -> None: ...
+
+    def get_health(self, watch_id: str) -> WatchHealth | None: ...
+
+    def record_health(self, health: WatchHealth) -> None: ...

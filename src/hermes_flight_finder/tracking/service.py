@@ -14,8 +14,10 @@ from hermes_flight_finder.models import (
     PriceObservation,
     QualityPolicy,
     Watch,
+    WatchHealth,
+    WatchHealthStatus,
 )
-from hermes_flight_finder.providers.base import FlightProvider
+from hermes_flight_finder.providers.base import FlightProvider, ProviderError
 from hermes_flight_finder.quality import (
     AssessedDateCandidate,
     assess_and_rank_offers,
@@ -46,18 +48,64 @@ class WatchCheckService:
 
     def check(self) -> CheckResult:
         alerts: list[Deal] = []
+        health_results: list[WatchHealth] = []
         watches = self._repository.list()
         for watch in watches:
-            offers = FlexibleSearchService(self._provider).search(watch.to_flexible_search_query())
-            candidates = self._concrete_candidates(watch, offers[: self._quality_candidates])
-            ranked = rank_date_candidates(candidates)
-            if not ranked or ranked[0].recommended_offer is None:
-                continue
-            candidate = ranked[0]
-            assessment = candidate.recommended_offer
-            assert assessment is not None
-            offer = assessment.offer
-            if offer.price is None:
+            attempted_at = datetime.now(UTC)
+            previous_health = self._repository.get_health(watch.id)
+            try:
+                offers = FlexibleSearchService(self._provider).search(
+                    watch.to_flexible_search_query()
+                )
+                candidates = self._concrete_candidates(watch, offers[: self._quality_candidates])
+                ranked = rank_date_candidates(candidates)
+                if not ranked or ranked[0].recommended_offer is None:
+                    health = WatchHealth(
+                        watch_id=watch.id,
+                        status=WatchHealthStatus.EMPTY,
+                        last_attempted_at=attempted_at,
+                        last_success_at=attempted_at,
+                    )
+                    self._repository.record_health(health)
+                    health_results.append(health)
+                    continue
+                candidate = ranked[0]
+                assessment = candidate.recommended_offer
+                assert assessment is not None
+                offer = assessment.offer
+                if offer.price is None:
+                    health = WatchHealth(
+                        watch_id=watch.id,
+                        status=WatchHealthStatus.EMPTY,
+                        last_attempted_at=attempted_at,
+                        last_success_at=attempted_at,
+                    )
+                    self._repository.record_health(health)
+                    health_results.append(health)
+                    continue
+            except ProviderError as error:
+                previous_success_at = (
+                    previous_health.last_success_at if previous_health is not None else None
+                )
+                if previous_success_at is None:
+                    previous_observations = self._repository.list_observations(watch.id)
+                    previous_success_at = (
+                        previous_observations[-1].checked_at if previous_observations else None
+                    )
+                health = WatchHealth(
+                    watch_id=watch.id,
+                    status=(
+                        WatchHealthStatus.STALE
+                        if previous_success_at is not None
+                        else WatchHealthStatus.FAILED
+                    ),
+                    last_attempted_at=attempted_at,
+                    last_success_at=previous_success_at,
+                    error_code=error.code.value,
+                    error_message=str(error),
+                )
+                self._repository.record_health(health)
+                health_results.append(health)
                 continue
             observation = PriceObservation(
                 checked_at=datetime.now(UTC),
@@ -93,7 +141,15 @@ class WatchCheckService:
                     )
                 )
                 alerts.append(deal)
-        return CheckResult(checked=len(watches), alerts=tuple(alerts))
+            health = WatchHealth(
+                watch_id=watch.id,
+                status=WatchHealthStatus.LIVE,
+                last_attempted_at=attempted_at,
+                last_success_at=attempted_at,
+            )
+            self._repository.record_health(health)
+            health_results.append(health)
+        return CheckResult(checked=len(watches), alerts=tuple(alerts), health=tuple(health_results))
 
     def _concrete_candidates(
         self, watch: Watch, date_offers: list[FlexibleDateOffer]

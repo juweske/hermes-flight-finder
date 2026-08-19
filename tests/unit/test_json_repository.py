@@ -13,6 +13,8 @@ from hermes_flight_finder.models import (
     QualityStatus,
     WarningSeverity,
     Watch,
+    WatchHealth,
+    WatchHealthStatus,
 )
 from hermes_flight_finder.storage import JsonWatchRepository, StateCorruptError
 
@@ -124,3 +126,19 @@ def test_repository_defaults_legacy_observation_source_to_fli(tmp_path: Path) ->
     assert observations[0].booking_strategy == BookingStrategy.SINGLE_ITINERARY
     assert observations[0].booking_warning is None
     assert observations[0].routes == ()
+
+
+def test_repository_persists_watch_health(tmp_path: Path) -> None:
+    repository = JsonWatchRepository(tmp_path)
+    health = WatchHealth(
+        watch_id="ham-nce-test",
+        status=WatchHealthStatus.FAILED,
+        last_attempted_at=datetime(2026, 8, 20, 12, 0, tzinfo=UTC),
+        last_success_at=datetime(2026, 8, 20, 6, 0, tzinfo=UTC),
+        error_code="rate_limited",
+        error_message="The flight provider is temporarily limiting requests.",
+    )
+
+    repository.record_health(health)
+
+    assert JsonWatchRepository(tmp_path).get_health(health.watch_id) == health

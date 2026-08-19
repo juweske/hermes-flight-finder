@@ -1,6 +1,12 @@
 """Flight data provider implementations."""
 
-from .base import BookingOptionsUnavailable, BookingProvider, FlightProvider, ProviderError
+from .base import (
+    BookingOptionsUnavailable,
+    BookingProvider,
+    FlightProvider,
+    ProviderError,
+    ProviderErrorCode,
+)
 from .fli import FliFlightProvider
 
 __all__ = [
@@ -9,4 +15,5 @@ __all__ = [
     "FlightProvider",
     "FliFlightProvider",
     "ProviderError",
+    "ProviderErrorCode",
 ]

@@ -9,7 +9,7 @@ def test_flight_finder_skill_declares_terminal_json_workflow() -> None:
     assert "hermes-flights watch check --json" in skill
     assert "Never invent availability" in skill
     assert "Do not create any other table layout" in skill
-    assert "automatically run `booking options`" in skill
+    assert "only when the user explicitly requests airline or vendor" in skill
     assert "These links are already final handoffs" in skill
     assert "Do not run it for `separate_tickets`" in skill
     assert "Show booking links immediately in the same response" in skill
@@ -17,8 +17,9 @@ def test_flight_finder_skill_declares_terminal_json_workflow() -> None:
     assert "Never ask whether the user wants a link" in skill
     assert "Never transcribe or reconstruct a booking URL" in skill
     assert "one user-visible response after all tool calls finish" in skill
-    assert "Abflug | Nächte | Rückkehr | Ab-Preis | Link" in skill
+    assert "Abflug | Nächte | Rückkehr | Preis | Link" in skill
     assert "Copy the CLI's ready-to-render" in skill
+    assert "Never infer currency" in skill
     assert "key: flight_finder.home_airports" in skill
     assert "JFK,LGA,EWR for New York City" in skill
     assert 'default: ""' in skill
@@ -26,7 +27,7 @@ def test_flight_finder_skill_declares_terminal_json_workflow() -> None:
     assert "key: flight_finder.watch_quality_candidates" in skill
     assert "lower value is recommended" in skill
     assert "Prefer `acceptable` over `warning`" in skill
-    assert "recommended_quality_candidate" in skill
+    assert "recommended_result" in skill
     assert "--acceptable-layover" in skill
     assert "--return-from" in skill
     assert 'booking_strategy: "separate_tickets"' in skill

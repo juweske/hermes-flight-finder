@@ -27,6 +27,7 @@ class DateSearchCache:
         self._directory = directory or get_data_dir() / "cache" / "date-searches"
         self._ttl = ttl
         self._clock = clock or (lambda: datetime.now(UTC))
+        self.last_hit_at: datetime | None = None
 
     def get(self, query: FlexibleSearchQuery) -> list[FlexibleDateOffer] | None:
         """Return a fresh cached result, treating invalid cache data as a miss."""
@@ -35,6 +36,7 @@ class DateSearchCache:
             saved_at = datetime.fromisoformat(payload["saved_at"])
             if self._clock() - saved_at > self._ttl:
                 return None
+            self.last_hit_at = saved_at
             return [
                 FlexibleDateOffer(
                     departure_date=datetime.fromisoformat(item["departure_date"]).date(),

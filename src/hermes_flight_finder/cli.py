@@ -25,6 +25,7 @@ from hermes_flight_finder.models import (
     PriceObservation,
     QualityPolicy,
     Watch,
+    WatchHealth,
     new_watch_id,
 )
 from hermes_flight_finder.providers import (
@@ -216,7 +217,7 @@ def _run_search(arguments: argparse.Namespace, provider: FlightProvider) -> int:
         _write_json({"ok": False, "error": {"code": "invalid_request", "message": str(error)}})
         return 2
     except ProviderError as error:
-        _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
+        _write_json({"ok": False, "error": _provider_error_as_dict(error)})
         return 2
 
     if arguments.json_output:
@@ -224,6 +225,8 @@ def _run_search(arguments: argparse.Namespace, provider: FlightProvider) -> int:
         _write_json(
             {
                 "ok": True,
+                "provider_status": "live" if offers else "empty",
+                "provider_message": _empty_provider_message(offers),
                 "offers": [
                     _assessed_offer_as_dict(assessment, offers.index(assessment.offer) + 1)
                     for assessment in assessed_offers
@@ -238,6 +241,7 @@ def _run_search(arguments: argparse.Namespace, provider: FlightProvider) -> int:
 def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int:
     """Return current provider links without opening a browser or purchasing anything."""
     booking_options_warning: str | None = None
+    booking_options_error: ProviderError | None = None
     query: FlightQuery | None = None
     selected_offer: FlightOffer
     options: list[BookingOption]
@@ -266,6 +270,7 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
         selected_offer = error.selected_offer
         options = []
         booking_options_warning = str(error)
+        booking_options_error = error
         policy = _quality_policy_from_arguments(arguments)
     except ProviderError as error:
         assert query is not None
@@ -280,6 +285,7 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
             "google_flights_search_url": google_flights_search_url,
             "booking_options": [],
             "booking_options_warning": str(error),
+            "booking_options_error": _provider_error_as_dict(error),
             "booking_refresh_failed": True,
         }
         if arguments.json_output:
@@ -312,6 +318,8 @@ def _run_booking(arguments: argparse.Namespace, provider: FlightProvider) -> int
     }
     if booking_options_warning:
         payload["booking_options_warning"] = booking_options_warning
+    if booking_options_error:
+        payload["booking_options_error"] = _provider_error_as_dict(booking_options_error)
     if arguments.json_output:
         _write_json(payload)
     else:
@@ -341,26 +349,27 @@ def _run_dates(arguments: argparse.Namespace, provider: FlightProvider) -> int:
         quality_candidates = _evaluate_date_candidates(
             provider, query, offers[: arguments.quality_candidates], policy
         )
+        concrete_results = _concrete_date_results(quality_candidates)
     except ValueError as error:
         _write_json({"ok": False, "error": {"code": "invalid_request", "message": str(error)}})
         return 2
     except ProviderError as error:
-        _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
+        _write_json({"ok": False, "error": _provider_error_as_dict(error)})
         return 2
 
     if arguments.json_output:
         _write_json(
             {
                 "ok": True,
-                "offers": [_flexible_offer_as_dict(offer) for offer in offers],
-                "quality_candidates": [
-                    _date_candidate_as_dict(candidate) for candidate in quality_candidates
-                ],
-                "recommended_quality_candidate": _recommended_date_candidate(quality_candidates),
+                "provider_status": "live" if concrete_results else "empty",
+                "provider_message": _date_results_message(offers, concrete_results),
+                "evaluated_date_pairs": len(quality_candidates),
+                "results": concrete_results,
+                "recommended_result": concrete_results[0] if concrete_results else None,
             }
         )
     else:
-        _write_human_date_offers(offers)
+        _write_human_date_results(concrete_results)
     return 0
 
 
@@ -437,7 +446,7 @@ def _run_watch_check(
             quality_candidates=arguments.quality_candidates,
         ).check()
     except ProviderError as error:
-        _write_json({"ok": False, "error": {"code": "provider_unavailable", "message": str(error)}})
+        _write_json({"ok": False, "error": _provider_error_as_dict(error)})
         return 2
     except StateCorruptError as error:
         _write_json({"ok": False, "error": {"code": "state_corrupt", "message": str(error)}})
@@ -446,6 +455,7 @@ def _run_watch_check(
         "ok": True,
         "checked": result.checked,
         "alerts": [_deal_as_dict(item) for item in result.alerts],
+        "health": [_watch_health_as_dict(item) for item in result.health],
     }
     if arguments.json_output:
         _write_json(payload)
@@ -683,7 +693,7 @@ def _offer_as_dict(offer: FlightOffer) -> dict[str, object]:
         str(price) if price is not None else None for price in offer.component_prices
     ]
     payload["component_booking_urls"] = list(offer.component_booking_urls)
-    payload["booking_link_markdown"] = _markdown_link(offer.booking_url)
+    payload["booking_link_markdown"] = _markdown_link(offer.booking_url, "🔗")
     payload["component_booking_links_markdown"] = [
         _markdown_link(url, f"Open ticket {index}")
         for index, url in enumerate(offer.component_booking_urls, start=1)
@@ -746,27 +756,19 @@ def _evaluate_date_candidates(
     return candidates
 
 
-def _date_candidate_as_dict(candidate: AssessedDateCandidate) -> dict[str, object]:
-    return {
-        "date_offer": _flexible_offer_as_dict(candidate.date_offer),
-        "offers": [
-            _assessed_offer_as_dict(item, offer_number)
-            for item, offer_number in zip(candidate.offers, candidate.offer_numbers, strict=True)
-        ],
-        "recommended_offer_number": candidate.recommended_offer_number,
-        "recommended_offer": (
-            _assessed_offer_as_dict(candidate.recommended_offer, candidate.recommended_offer_number)
-            if candidate.recommended_offer is not None
-            else None
-        ),
-    }
-
-
-def _recommended_date_candidate(
-    candidates: list[AssessedDateCandidate],
-) -> dict[str, object] | None:
-    ranked = rank_date_candidates(candidates)
-    return _date_candidate_as_dict(ranked[0]) if ranked else None
+def _concrete_date_results(candidates: list[AssessedDateCandidate]) -> list[dict[str, object]]:
+    results: list[dict[str, object]] = []
+    for candidate in rank_date_candidates(candidates):
+        if candidate.recommended_offer is None:
+            continue
+        payload = _assessed_offer_as_dict(
+            candidate.recommended_offer, candidate.recommended_offer_number
+        )
+        payload["departure_date"] = candidate.date_offer.departure_date.isoformat()
+        payload["return_date"] = candidate.date_offer.return_date.isoformat()
+        payload["nights"] = candidate.date_offer.nights
+        results.append(payload)
+    return results
 
 
 def _warning_as_dict(warning: object) -> dict[str, object]:
@@ -821,14 +823,6 @@ def _booking_option_as_dict(option: BookingOption) -> dict[str, object]:
         "handoff_url": option.handoff_url,
         "handoff_link_markdown": _markdown_link(option.handoff_url),
     }
-
-
-def _flexible_offer_as_dict(offer: FlexibleDateOffer) -> dict[str, object]:
-    payload = asdict(offer)
-    payload["price"] = str(offer.price)
-    payload["nights"] = offer.nights
-    payload["booking_link_markdown"] = _markdown_link(offer.booking_url)
-    return payload
 
 
 def _markdown_link(url: str | None, label: str = "Open") -> str | None:
@@ -939,6 +933,45 @@ def _deal_as_dict(deal: object) -> dict[str, object]:
     }
 
 
+def _watch_health_as_dict(health: WatchHealth) -> dict[str, object]:
+    return {
+        "watch_id": health.watch_id,
+        "status": health.status.value,
+        "last_attempted_at": health.last_attempted_at.isoformat(),
+        "last_success_at": (
+            health.last_success_at.isoformat() if health.last_success_at is not None else None
+        ),
+        "error": (
+            {"code": health.error_code, "message": health.error_message}
+            if health.error_code and health.error_message
+            else None
+        ),
+    }
+
+
+def _provider_error_as_dict(error: ProviderError) -> dict[str, object]:
+    return {"code": error.code.value, "message": str(error)}
+
+
+def _empty_provider_message(offers: Sequence[object]) -> str | None:
+    if offers:
+        return None
+    return (
+        "The flight provider returned no offers. This may mean there are no matching flights or "
+        "that the provider returned an incomplete response."
+    )
+
+
+def _date_results_message(
+    discovered_dates: Sequence[object], concrete_results: Sequence[object]
+) -> str | None:
+    if concrete_results:
+        return None
+    if discovered_dates:
+        return "The flight provider returned no concrete itineraries for the evaluated date pairs."
+    return _empty_provider_message(discovered_dates)
+
+
 def _write_json(payload: dict[str, object]) -> None:
     print(json.dumps(payload, default=_json_default, sort_keys=True))
 
@@ -996,17 +1029,19 @@ def _write_human_offers(offers: list[FlightOffer]) -> None:
             print(f"   Book: {offer.booking_url}")
 
 
-def _write_human_date_offers(offers: list[FlexibleDateOffer]) -> None:
-    if not offers:
-        print("No dates found.")
+def _write_human_date_results(results: list[dict[str, object]]) -> None:
+    if not results:
+        print("No concrete itineraries found.")
         return
-    print("Best dates\n")
-    for index, offer in enumerate(offers, start=1):
-        price = f"{offer.currency or ''} {offer.price}".strip()
-        print(f"{index}. {price} - {offer.departure_date} -> {offer.return_date}")
-        print(f"   {offer.nights} night(s)")
-        if offer.booking_url:
-            print(f"   Link: {offer.booking_url}")
+    print("Best concrete itineraries\n")
+    for index, result in enumerate(results, start=1):
+        price = f"{result.get('currency') or ''} {result.get('price') or ''}".strip()
+        print(
+            f"{index}. {price} - {result['departure_date']} -> {result['return_date']} "
+            f"({result['nights']} night(s))"
+        )
+        if result.get("booking_url"):
+            print(f"   Link: {result['booking_url']}")
 
 
 def _write_watch_result(json_output: bool, watch: Watch, title: str) -> None:

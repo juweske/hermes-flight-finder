@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -8,7 +8,10 @@ from hermes_flight_finder.models import (
     FlightOffer,
     FlightQuery,
     Watch,
+    WatchHealth,
+    WatchHealthStatus,
 )
+from hermes_flight_finder.providers import ProviderError, ProviderErrorCode
 from hermes_flight_finder.storage import JsonWatchRepository
 from hermes_flight_finder.tracking import WatchCheckService
 
@@ -40,6 +43,16 @@ class _PriceProvider:
                 currency=query.currency,
             )
         ]
+
+
+class _PartiallyFailingProvider(_PriceProvider):
+    def search_dates(self, query: FlexibleSearchQuery) -> list[FlexibleDateOffer]:
+        if query.origin == "HAM":
+            raise ProviderError(
+                "The flight provider refused the request. Try again later.",
+                ProviderErrorCode.REQUEST_REFUSED,
+            )
+        return super().search_dates(query)
 
 
 def test_watch_check_records_baseline_alerts_on_drop_and_suppresses_duplicates(
@@ -74,3 +87,45 @@ def test_watch_check_records_baseline_alerts_on_drop_and_suppresses_duplicates(
     assert third.alerts == ()
     assert len(repository.list_observations(watch.id)) == 3
     assert len(repository.list_alerts(watch.id)) == 1
+
+
+def test_watch_check_isolates_provider_failures_and_persists_health(tmp_path: Path) -> None:
+    start_date = date.today() + timedelta(days=5)
+    repository = JsonWatchRepository(tmp_path)
+    repository.save(Watch("ham-nce-failed", "HAM", "NCE", start_date, start_date, 2, 2))
+    repository.save(Watch("jfk-lax-live", "JFK", "LAX", start_date, start_date, 2, 2))
+    service = WatchCheckService(_PartiallyFailingProvider([Decimal("100")]), repository)
+
+    result = service.check()
+
+    assert result.checked == 2
+    assert [item.status for item in result.health] == [
+        WatchHealthStatus.FAILED,
+        WatchHealthStatus.LIVE,
+    ]
+    failed = repository.get_health("ham-nce-failed")
+    assert failed is not None
+    assert failed.error_code == "request_refused"
+    assert "refused" in (failed.error_message or "")
+    assert repository.get_health("jfk-lax-live") is not None
+
+
+def test_watch_failure_is_stale_when_an_older_success_exists(tmp_path: Path) -> None:
+    start_date = date.today() + timedelta(days=5)
+    repository = JsonWatchRepository(tmp_path)
+    watch = Watch("ham-nce-stale", "HAM", "NCE", start_date, start_date, 2, 2)
+    repository.save(watch)
+    previous_success = datetime(2026, 8, 20, 6, 0, tzinfo=UTC)
+    repository.record_health(
+        WatchHealth(
+            watch_id=watch.id,
+            status=WatchHealthStatus.LIVE,
+            last_attempted_at=previous_success,
+            last_success_at=previous_success,
+        )
+    )
+
+    result = WatchCheckService(_PartiallyFailingProvider([]), repository).check()
+
+    assert result.health[0].status == WatchHealthStatus.STALE
+    assert result.health[0].last_success_at == previous_success
