@@ -29,7 +29,7 @@ history, deterministic alerts, the Hermes skill bundle, and cron guidance are av
 - [ ] Full vendor-specific booking deep links when supported by a provider
 - [ ] Booking context: bag allowance, fare conditions, refundability, and change policy when available
 - [x] Configurable itinerary-quality rules and warnings: long or overnight layovers, airport changes, self-transfers, and impractical total journey times
-- [ ] Multi-airport, open-jaw, and road-trip itineraries, such as Hamburg to Nice and Marseille to Berlin
+- [x] Multi-airport, open-jaw, and road-trip itineraries, with a warned separate-ticket fallback only when multi-city returns no matches
 - [ ] Flexible-date price grid for comparing possible trip-date combinations
 - [ ] Watch health, stale-data status, and provider error visibility
 
@@ -95,6 +95,24 @@ non-zero exit status and a stable JSON error object; it is never represented as 
 Concrete offers include `quality_status` and structured `warnings`. Acceptable itineraries are
 ranked ahead of warning and avoid results, while every result remains visible.
 
+Airport groups can be comma-separated. Open-jaw trips use `--return-from` and optionally
+`--return-to`:
+
+```bash
+hermes-flights search \
+  --from JFK,LGA,EWR --to NCE \
+  --departure 2026-09-18 \
+  --return-from MRS --return-to BOS \
+  --return 2026-09-27 --currency USD --json
+```
+
+Changed return endpoints are searched as one multi-city itinerary. Only when that search returns
+no matching offers does Flight Finder combine independent one-way flights. Those results use
+`booking_strategy: "separate_tickets"`, expose each component price and booking URL, and include a
+warning about separate purchases, baggage rules, changes, cancellations, and the lack of
+cross-booking protection. A cheaper one-way combination never silently replaces an available
+multi-city result.
+
 ## Flexible-Date Search
 
 ```bash
@@ -115,6 +133,8 @@ pairs and orders the results by price. Every result includes a Google Flights ro
 By default, the five cheapest date pairs are also searched as concrete itineraries and returned in
 `quality_candidates`; `recommended_quality_candidate` prefers a practical itinerary over a cheaper
 one with severe warnings. Change the request budget with `--quality-candidates N`.
+For flexible open jaws, two one-way calendars identify promising date pairs, but every concrete
+candidate is still searched as multi-city before the separate-ticket fallback can activate.
 
 ## Itinerary Preferences
 

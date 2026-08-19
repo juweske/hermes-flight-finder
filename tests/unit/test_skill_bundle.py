@@ -25,6 +25,9 @@ def test_flight_finder_skill_declares_terminal_json_workflow() -> None:
     assert "Prefer `acceptable` over `warning`" in skill
     assert "recommended_quality_candidate" in skill
     assert "--acceptable-layover" in skill
+    assert "--return-from" in skill
+    assert 'booking_strategy: "separate_tickets"' in skill
+    assert "Do not manually split" in skill
     assert "exactly [SILENT]" in skill
 
 

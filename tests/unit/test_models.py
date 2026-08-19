@@ -20,6 +20,25 @@ def test_query_normalizes_codes() -> None:
     assert query.airlines == ("EW",)
 
 
+def test_query_supports_airport_groups_and_open_jaw_returns() -> None:
+    query = FlightQuery(
+        origin="jfk",
+        destination="lhr",
+        departure_date=date.today() + timedelta(days=5),
+        return_date=date.today() + timedelta(days=10),
+        origin_alternatives=("lga", "ewr"),
+        destination_alternatives=("lgw",),
+        return_origins=("cdg", "ory"),
+        return_destinations=("bos",),
+    )
+
+    assert query.outbound_origins == ("JFK", "LGA", "EWR")
+    assert query.outbound_destinations == ("LHR", "LGW")
+    assert query.inbound_origins == ("CDG", "ORY")
+    assert query.inbound_destinations == ("BOS",)
+    assert query.is_open_jaw is True
+
+
 def test_query_rejects_past_dates() -> None:
     with pytest.raises(ValueError, match="must not be in the past"):
         FlightQuery(

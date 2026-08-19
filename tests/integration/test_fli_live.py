@@ -19,4 +19,24 @@ def test_fli_provider_searches_a_future_route() -> None:
         )
     )
 
+    assert offers
     assert all(offer.legs for offer in offers)
+
+
+@pytest.mark.live
+def test_fli_provider_searches_a_multi_city_open_jaw() -> None:
+    offers = FliFlightProvider().search(
+        FlightQuery(
+            origin="JFK",
+            destination="LAX",
+            departure_date=date.today() + timedelta(days=35),
+            return_date=date.today() + timedelta(days=42),
+            return_origins=("SFO",),
+            return_destinations=("BOS",),
+            currency="USD",
+        )
+    )
+
+    assert offers
+    assert all(len(offer.journeys) == 2 for offer in offers)
+    assert all(offer.booking_url for offer in offers)

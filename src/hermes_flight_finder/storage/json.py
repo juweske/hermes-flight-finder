@@ -13,6 +13,7 @@ from typing import cast
 from hermes_flight_finder.config import get_data_dir
 from hermes_flight_finder.models import (
     AlertRecord,
+    BookingStrategy,
     Cabin,
     ItineraryWarning,
     MaxStops,
@@ -164,6 +165,10 @@ def _watch_as_dict(watch: Watch) -> dict[str, object]:
         "currency": watch.currency,
         "airlines": list(watch.airlines),
         "departure_window": list(watch.departure_window) if watch.departure_window else None,
+        "origin_alternatives": list(watch.origin_alternatives),
+        "destination_alternatives": list(watch.destination_alternatives),
+        "return_origins": list(watch.return_origins),
+        "return_destinations": list(watch.return_destinations),
         "target_price": str(watch.target_price) if watch.target_price is not None else None,
         "drop_percent": str(watch.drop_percent) if watch.drop_percent is not None else None,
         "created_at": watch.created_at.isoformat(),
@@ -186,6 +191,10 @@ def _watch_from_dict(raw: dict[str, object]) -> Watch:
         currency=_required_str(raw, "currency"),
         airlines=tuple(_required_str_list(raw, "airlines")),
         departure_window=_departure_window_from_raw(departure_window),
+        origin_alternatives=tuple(_optional_str_list(raw, "origin_alternatives")),
+        destination_alternatives=tuple(_optional_str_list(raw, "destination_alternatives")),
+        return_origins=tuple(_optional_str_list(raw, "return_origins")),
+        return_destinations=tuple(_optional_str_list(raw, "return_destinations")),
         target_price=_optional_decimal(raw.get("target_price")),
         drop_percent=_optional_decimal(raw.get("drop_percent")),
         created_at=datetime.fromisoformat(_required_str(raw, "created_at")),
@@ -216,6 +225,12 @@ def _required_str_list(raw: dict[str, object], key: str) -> list[str]:
     return [cast(str, item) for item in values]
 
 
+def _optional_str_list(raw: dict[str, object], key: str) -> list[str]:
+    if key not in raw:
+        return []
+    return _required_str_list(raw, key)
+
+
 def _departure_window_from_raw(value: object) -> tuple[int, int] | None:
     if value is None:
         return None
@@ -232,6 +247,14 @@ def _optional_str(value: object, default: str) -> str:
         return default
     if not isinstance(value, str):
         raise ValueError("source must be a string")
+    return value
+
+
+def _optional_nullable_str(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
     return value
 
 
@@ -268,6 +291,9 @@ def _observation_as_dict(item: PriceObservation) -> dict[str, object]:
         "source": item.source,
         "quality_status": item.quality_status.value,
         "warnings": [_warning_as_dict(warning) for warning in item.warnings],
+        "booking_strategy": item.booking_strategy.value,
+        "booking_warning": item.booking_warning,
+        "routes": [list(route) for route in item.routes],
     }
 
 
@@ -276,18 +302,41 @@ def _observation_from_dict(raw: dict[str, object]) -> PriceObservation:
     if stops is not None and (not isinstance(stops, int) or isinstance(stops, bool)):
         raise ValueError("stops must be an integer")
     return PriceObservation(
-        datetime.fromisoformat(_required_str(raw, "checked_at")),
-        _required_str(raw, "watch_id"),
-        Decimal(_required_str(raw, "price")),
-        _required_str(raw, "currency"),
-        datetime.fromisoformat(_required_str(raw, "departure_date")).date(),
-        datetime.fromisoformat(_required_str(raw, "return_date")).date(),
-        tuple(_required_str_list(raw, "airlines")),
-        stops,
-        _optional_str(raw.get("source"), "fli"),
-        QualityStatus(_optional_str(raw.get("quality_status"), "acceptable")),
-        tuple(_warning_from_dict(item) for item in _object_list(raw, "warnings")),
+        checked_at=datetime.fromisoformat(_required_str(raw, "checked_at")),
+        watch_id=_required_str(raw, "watch_id"),
+        price=Decimal(_required_str(raw, "price")),
+        currency=_required_str(raw, "currency"),
+        departure_date=datetime.fromisoformat(_required_str(raw, "departure_date")).date(),
+        return_date=datetime.fromisoformat(_required_str(raw, "return_date")).date(),
+        airlines=tuple(_required_str_list(raw, "airlines")),
+        stops=stops,
+        source=_optional_str(raw.get("source"), "fli"),
+        quality_status=QualityStatus(_optional_str(raw.get("quality_status"), "acceptable")),
+        warnings=tuple(_warning_from_dict(item) for item in _object_list(raw, "warnings")),
+        booking_strategy=BookingStrategy(
+            _optional_str(raw.get("booking_strategy"), "single_itinerary")
+        ),
+        booking_warning=_optional_nullable_str(raw.get("booking_warning"), "booking_warning"),
+        routes=_routes_from_raw(raw.get("routes")),
     )
+
+
+def _routes_from_raw(value: object) -> tuple[tuple[str, str], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("routes must be a list")
+    routes: list[tuple[str, str]] = []
+    for route in cast(list[object], value):
+        if not isinstance(route, list):
+            raise ValueError("each route must contain an origin and destination")
+        airports = cast(list[object], route)
+        if len(airports) != 2:
+            raise ValueError("each route must contain an origin and destination")
+        if not all(isinstance(airport, str) for airport in airports):
+            raise ValueError("route airports must be strings")
+        routes.append((cast(str, airports[0]), cast(str, airports[1])))
+    return tuple(routes)
 
 
 def _warning_as_dict(item: ItineraryWarning) -> dict[str, object]:

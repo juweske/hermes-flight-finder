@@ -88,6 +88,25 @@ class _UnavailableBookingProvider(_FakeProvider):
         )
 
 
+class _OpenJawFallbackProvider(_FakeProvider):
+    def search(self, query: FlightQuery) -> list[FlightOffer]:
+        if query.is_open_jaw:
+            return []
+        offer = super().search(query)[0]
+        price = Decimal("70") if query.origin == "HAM" else Decimal("85")
+        suffix = "outbound" if query.origin == "HAM" else "inbound"
+        return [
+            FlightOffer(
+                price=price,
+                currency=offer.currency,
+                duration_minutes=offer.duration_minutes,
+                stops=offer.stops,
+                legs=offer.legs,
+                booking_url=f"https://book.example.test/{suffix}",
+            )
+        ]
+
+
 def test_help_exits_successfully(capsys: CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc_info:
         main(["--help"])
@@ -147,6 +166,40 @@ def test_search_writes_stable_json(capsys: CaptureFixture[str]) -> None:
     assert payload["offers"][0]["legs"][0]["departure_airport"] == "HAM"
     assert payload["offers"][0]["quality_status"] == "acceptable"
     assert payload["offers"][0]["warnings"] == []
+
+
+def test_open_jaw_search_marks_separate_ticket_fallback(capsys: CaptureFixture[str]) -> None:
+    exit_code = main(
+        [
+            "search",
+            "--from",
+            "HAM",
+            "--to",
+            "NCE",
+            "--departure",
+            "2026-09-18",
+            "--return-from",
+            "MRS",
+            "--return-to",
+            "BER",
+            "--return",
+            "2026-09-25",
+            "--json",
+        ],
+        provider=_OpenJawFallbackProvider(),
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    offer = payload["offers"][0]
+    assert offer["price"] == "155"
+    assert offer["booking_strategy"] == "separate_tickets"
+    assert offer["component_prices"] == ["70", "85"]
+    assert offer["component_booking_urls"] == [
+        "https://book.example.test/outbound",
+        "https://book.example.test/inbound",
+    ]
+    assert "independent one-way bookings" in offer["booking_warning"]
 
 
 def test_dates_writes_stable_json(capsys: CaptureFixture[str]) -> None:
@@ -348,3 +401,40 @@ def test_booking_options_keeps_exact_handoff_when_vendor_options_fail(
     assert payload["booking_options_warning"] == (
         "Vendor booking options are temporarily unavailable"
     )
+
+
+def test_booking_options_returns_both_separate_ticket_handoffs(
+    capsys: CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [
+            "booking",
+            "options",
+            "--from",
+            "HAM",
+            "--to",
+            "NCE",
+            "--departure",
+            "2026-09-18",
+            "--return-from",
+            "MRS",
+            "--return-to",
+            "BER",
+            "--return",
+            "2026-09-25",
+            "--offer",
+            "1",
+            "--json",
+        ],
+        provider=_OpenJawFallbackProvider(),
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["booking_handoff_url"] is None
+    assert payload["booking_handoff_urls"] == [
+        "https://book.example.test/outbound",
+        "https://book.example.test/inbound",
+    ]
+    assert payload["selected_offer"]["booking_strategy"] == "separate_tickets"
+    assert "independent one-way bookings" in payload["booking_options_warning"]

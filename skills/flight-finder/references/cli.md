@@ -6,16 +6,22 @@ returns `{"ok": false, "error": {"code": "provider_unavailable", ...}}` and is n
 ## Search
 
 ```bash
-hermes-flights search --from IATA --to IATA --departure YYYY-MM-DD [--return YYYY-MM-DD] [--cabin ECONOMY|PREMIUM_ECONOMY|BUSINESS|FIRST] [--passengers N] [--currency ISO] [--nonstop|--max-stops 0|1|2|any] [quality options] [--airlines XX,YY] [--departure-window START-END] --json
+hermes-flights search --from IATA[,IATA] --to IATA[,IATA] --departure YYYY-MM-DD [--return-from IATA[,IATA]] [--return-to IATA[,IATA]] [--return YYYY-MM-DD] [--cabin ECONOMY|PREMIUM_ECONOMY|BUSINESS|FIRST] [--passengers N] [--currency ISO] [--nonstop|--max-stops 0|1|2|any] [quality options] [--airlines XX,YY] [--departure-window START-END] --json
 ```
 
 Success contains quality-ranked `offers`, each with its original `offer_number`, price, currency,
 stops, airlines, legs, `quality_status`, and structured `warnings`.
 
+Comma-separated airports are alternatives within one segment. When return endpoints differ from
+the reversed outbound route, the CLI performs a multi-city search. If and only if that returns no
+offers, it searches the two directions independently. Fallback offers have
+`booking_strategy: "separate_tickets"`, `component_prices`, `component_booking_urls`, and a
+`booking_warning`; their `price` is the combined estimate.
+
 ## Flexible Dates
 
 ```bash
-hermes-flights dates --from IATA --to IATA --start YYYY-MM-DD --end YYYY-MM-DD --min-nights N --max-nights N [--nonstop|--max-stops 0|1|2|any] [--currency ISO] [quality options] [--quality-candidates N] --json
+hermes-flights dates --from IATA[,IATA] --to IATA[,IATA] --start YYYY-MM-DD --end YYYY-MM-DD --min-nights N --max-nights N [--return-from IATA[,IATA]] [--return-to IATA[,IATA]] [--nonstop|--max-stops 0|1|2|any] [--currency ISO] [quality options] [--quality-candidates N] --json
 ```
 
 Success contains price/date offers with `departure_date`, `return_date`, `nights`, and a
@@ -25,11 +31,13 @@ not a preselected itinerary.
 The cheapest `N` date pairs are also searched as concrete itineraries. They appear in
 `quality_candidates`; `recommended_quality_candidate` is the best practical option after warning
 evaluation, not necessarily the lowest calendar price.
+For an open jaw, two one-way calendars generate candidate date pairs, but each concrete candidate
+is searched as multi-city before the separate-ticket fallback can activate.
 
 ## Booking Handoff
 
 ```bash
-hermes-flights booking options --from IATA --to IATA --departure YYYY-MM-DD [--return YYYY-MM-DD] [--cabin ECONOMY|PREMIUM_ECONOMY|BUSINESS|FIRST] [--passengers N] [--currency ISO] [--nonstop|--max-stops 0|1|2|any] [quality options] [--airlines XX,YY] [--departure-window START-END] [--offer NUMBER] --json
+hermes-flights booking options --from IATA[,IATA] --to IATA[,IATA] --departure YYYY-MM-DD [--return-from IATA[,IATA]] [--return-to IATA[,IATA]] [--return YYYY-MM-DD] [--cabin ECONOMY|PREMIUM_ECONOMY|BUSINESS|FIRST] [--passengers N] [--currency ISO] [--nonstop|--max-stops 0|1|2|any] [quality options] [--airlines XX,YY] [--departure-window START-END] [--offer NUMBER] --json
 ```
 
 The command reruns the exact search and returns `selected_offer`, current `booking_options`, and a
@@ -38,6 +46,10 @@ selected itinerary's Google Flights booking page; otherwise it uses `google_flig
 the fallback. If vendor-option retrieval fails after an exact itinerary was selected,
 the command still returns `ok: true`, the handoff, an empty `booking_options` list, and a
 `booking_options_warning`.
+
+For a separate-ticket fallback, `booking_handoff_url` is null and `booking_handoff_urls` contains
+one exact handoff per independent ticket. The warning and component prices are retained in
+`selected_offer`.
 
 Each option includes vendor details, refreshed price when available, and full direct or Google
 click-through URLs when supplied by the provider. `google_flights_search_url` is always a valid
@@ -61,7 +73,7 @@ removed. Searches also accept `--max-stops 0|1|2|any`.
 ## Watches
 
 ```bash
-hermes-flights watch add --from IATA --to IATA --start YYYY-MM-DD --end YYYY-MM-DD --min-nights N --max-nights N [--target-price PRICE] [--drop-percent PERCENT] --json
+hermes-flights watch add --from IATA[,IATA] --to IATA[,IATA] --start YYYY-MM-DD --end YYYY-MM-DD --min-nights N --max-nights N [--return-from IATA[,IATA]] [--return-to IATA[,IATA]] [--target-price PRICE] [--drop-percent PERCENT] --json
 hermes-flights watch list --json
 hermes-flights watch show ID --json
 hermes-flights watch history ID --json
@@ -71,7 +83,8 @@ hermes-flights watch check [quality options] [--quality-candidates N] --json
 
 `watch history` returns `watch`, `summary`, and ordered `observations`. The summary identifies the
 lowest price since tracking started; each observation includes a `source` (`fli` for current checks),
-`quality_status`, and structured `warnings`.
+`quality_status`, structured `warnings`, the booking strategy, and the concrete per-direction
+`routes` selected from any airport groups.
 
 `watch check` returns `checked` and `alerts`. Each alert includes a price, dates, optional prior
 best and percentage drop, deterministic `reasons` such as `target_price` or `price_drop`, and the

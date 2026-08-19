@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Protocol, cast
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from fli.core import google_flights_url
 from fli.models import (
@@ -172,6 +172,8 @@ class FliFlightProvider:
     def search_dates(self, query: FlexibleSearchQuery) -> list[FlexibleDateOffer]:
         """Search every requested trip duration through `fli`'s calendar API."""
         client = cast(_DateSearchClient, self._date_search_factory())
+        if query.is_open_jaw:
+            return self._search_open_jaw_dates(client, query)
         offers: list[FlexibleDateOffer] = []
         for nights in range(query.min_nights, query.max_nights + 1):
             try:
@@ -189,16 +191,74 @@ class FliFlightProvider:
             offers.extend(self._normalize_date_price(result, query) for result in results)
         return offers
 
+    def _search_open_jaw_dates(
+        self, client: _DateSearchClient, query: FlexibleSearchQuery
+    ) -> list[FlexibleDateOffer]:
+        try:
+            outbound_raw = client.search(
+                self._build_one_way_date_filters(
+                    query,
+                    query.outbound_origins,
+                    query.outbound_destinations,
+                    query.start_date,
+                    query.end_date,
+                ),
+                currency=query.currency,
+            )
+            inbound_raw = client.search(
+                self._build_one_way_date_filters(
+                    query,
+                    query.inbound_origins,
+                    query.inbound_destinations,
+                    query.start_date + timedelta(days=query.min_nights),
+                    query.end_date + timedelta(days=query.max_nights),
+                ),
+                currency=query.currency,
+            )
+        except Exception as error:
+            raise ProviderError("Flight provider request failed") from error
+        outbound = _one_way_date_prices(outbound_raw)
+        inbound = _one_way_date_prices(inbound_raw)
+        offers: list[FlexibleDateOffer] = []
+        for departure_date, (outbound_price, outbound_currency) in outbound.items():
+            for return_date, (inbound_price, inbound_currency) in inbound.items():
+                nights = (return_date - departure_date).days
+                if not query.min_nights <= nights <= query.max_nights:
+                    continue
+                currency = (
+                    outbound_currency if outbound_currency == inbound_currency else query.currency
+                )
+                offers.append(
+                    FlexibleDateOffer(
+                        departure_date=departure_date,
+                        return_date=return_date,
+                        price=outbound_price + inbound_price,
+                        currency=currency,
+                        booking_url=_multi_city_search_url(query, departure_date, return_date),
+                    )
+                )
+        return offers
+
     @staticmethod
     def _build_filters(query: FlightQuery) -> FlightSearchFilters:
         segments = [
-            _segment(query.origin, query.destination, query.departure_date.isoformat(), query),
+            _segment(
+                query.outbound_origins,
+                query.outbound_destinations,
+                query.departure_date.isoformat(),
+                query,
+            ),
         ]
         trip_type = TripType.ONE_WAY
         if query.return_date is not None:
-            trip_type = TripType.ROUND_TRIP
+            trip_type = TripType.MULTI_CITY if query.is_open_jaw else TripType.ROUND_TRIP
             segments.append(
-                _segment(query.destination, query.origin, query.return_date.isoformat(), query)
+                _segment(
+                    query.inbound_origins,
+                    query.inbound_destinations,
+                    query.return_date.isoformat(),
+                    query,
+                )
             )
 
         return FlightSearchFilters(
@@ -215,8 +275,18 @@ class FliFlightProvider:
     def _build_date_filters(query: FlexibleSearchQuery, nights: int) -> DateSearchFilters:
         return_date = query.start_date + timedelta(days=nights)
         segments = [
-            _segment(query.origin, query.destination, query.start_date.isoformat(), query),
-            _segment(query.destination, query.origin, return_date.isoformat(), query),
+            _segment(
+                query.outbound_origins,
+                query.outbound_destinations,
+                query.start_date.isoformat(),
+                query,
+            ),
+            _segment(
+                query.inbound_origins,
+                query.inbound_destinations,
+                return_date.isoformat(),
+                query,
+            ),
         ]
         return DateSearchFilters(
             trip_type=TripType.ROUND_TRIP,
@@ -228,6 +298,25 @@ class FliFlightProvider:
             from_date=query.start_date.isoformat(),
             to_date=query.end_date.isoformat(),
             duration=nights,
+        )
+
+    @staticmethod
+    def _build_one_way_date_filters(
+        query: FlexibleSearchQuery,
+        origins: tuple[str, ...],
+        destinations: tuple[str, ...],
+        start_date: date,
+        end_date: date,
+    ) -> DateSearchFilters:
+        return DateSearchFilters(
+            trip_type=TripType.ONE_WAY,
+            passenger_info=PassengerInfo(adults=query.passengers),
+            flight_segments=[_segment(origins, destinations, start_date.isoformat(), query)],
+            seat_type=SeatType[query.cabin.name],
+            stops=FliMaxStops[query.max_stops.name],
+            airlines=[Airline[airline] for airline in query.airlines] or None,
+            from_date=start_date.isoformat(),
+            to_date=end_date.isoformat(),
         )
 
     @staticmethod
@@ -295,19 +384,22 @@ class FliFlightProvider:
         if len(raw_price.date) != 2:
             raise ProviderError("Flight provider returned an unexpected date result")
         departure_at, return_at = raw_price.date
+        booking_url = google_flights_url(
+            query.origin,
+            query.destination,
+            departure_at.date().isoformat(),
+            return_at.date().isoformat(),
+            currency=query.currency,
+            language="en",
+        )
+        if len(query.outbound_origins) > 1 or len(query.outbound_destinations) > 1:
+            booking_url = _round_trip_group_search_url(query, departure_at.date(), return_at.date())
         return FlexibleDateOffer(
             departure_date=departure_at.date(),
             return_date=return_at.date(),
             price=Decimal(str(raw_price.price)),
             currency=raw_price.currency,
-            booking_url=google_flights_url(
-                query.origin,
-                query.destination,
-                departure_at.date().isoformat(),
-                return_at.date().isoformat(),
-                currency=query.currency,
-                language="en",
-            ),
+            booking_url=booking_url,
         )
 
 
@@ -343,18 +435,20 @@ def _offer_sort_key(offer: FlightOffer) -> tuple[bool, Decimal, int]:
 
 
 def _segment(
-    origin: str,
-    destination: str,
+    origins: str | tuple[str, ...],
+    destinations: str | tuple[str, ...],
     travel_date: str,
     query: FlightQuery | FlexibleSearchQuery,
 ) -> FlightSegment:
+    origin_codes = (origins,) if isinstance(origins, str) else origins
+    destination_codes = (destinations,) if isinstance(destinations, str) else destinations
     time_restrictions = None
     if query.departure_window is not None:
         start, end = query.departure_window
         time_restrictions = TimeRestrictions(earliest_departure=start, latest_departure=end)
     return FlightSegment(
-        departure_airport=[[Airport[origin], 0]],
-        arrival_airport=[[Airport[destination], 0]],
+        departure_airport=[[Airport[origin], 0] for origin in origin_codes],
+        arrival_airport=[[Airport[destination], 0] for destination in destination_codes],
         travel_date=travel_date,
         time_restrictions=time_restrictions,
     )
@@ -389,3 +483,51 @@ def _normalize_layover(raw_layover: FliLayover) -> FlightLayover:
         )
     except (AttributeError, TypeError, ValueError) as error:
         raise ProviderError("Flight provider returned an unexpected layover") from error
+
+
+def _one_way_date_prices(
+    raw_results: object,
+) -> dict[date, tuple[Decimal, str | None]]:
+    if raw_results is None:
+        return {}
+    if not isinstance(raw_results, list):
+        raise ProviderError("Flight provider returned an unexpected date response")
+    prices: dict[date, tuple[Decimal, str | None]] = {}
+    for item in cast(list[DatePrice], raw_results):
+        if len(item.date) != 1:
+            raise ProviderError("Flight provider returned an unexpected one-way date result")
+        travel_date = item.date[0].date()
+        price = Decimal(str(item.price))
+        current = prices.get(travel_date)
+        if current is None or price < current[0]:
+            prices[travel_date] = (price, item.currency)
+    return prices
+
+
+def _multi_city_search_url(
+    query: FlexibleSearchQuery, departure_date: date, return_date: date
+) -> str:
+    outbound_origins = ",".join(query.outbound_origins)
+    outbound_destinations = ",".join(query.outbound_destinations)
+    inbound_origins = ",".join(query.inbound_origins)
+    inbound_destinations = ",".join(query.inbound_destinations)
+    search_text = (
+        f"Flights from {outbound_origins} to {outbound_destinations} on {departure_date}; "
+        f"then from {inbound_origins} to {inbound_destinations} on {return_date}"
+    )
+    return (
+        f"https://www.google.com/travel/flights?q={quote(search_text)}&curr={query.currency}&hl=en"
+    )
+
+
+def _round_trip_group_search_url(
+    query: FlexibleSearchQuery, departure_date: date, return_date: date
+) -> str:
+    origins = ",".join(query.outbound_origins)
+    destinations = ",".join(query.outbound_destinations)
+    search_text = (
+        f"Flights from {origins} to {destinations} on {departure_date} returning {return_date}"
+    )
+    return (
+        f"https://www.google.com/travel/flights?q={quote(search_text)}&curr={query.currency}&hl=en"
+    )

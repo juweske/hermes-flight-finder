@@ -51,10 +51,22 @@ class QualityStatus(StrEnum):
     AVOID = "avoid"
 
 
+class BookingStrategy(StrEnum):
+    """How the flights in an offer are handed off for purchase."""
+
+    SINGLE_ITINERARY = "single_itinerary"
+    SEPARATE_TICKETS = "separate_tickets"
+
+
 def _validate_iata(code: str, field_name: str) -> str:
     normalized = code.upper()
     if not fullmatch(r"[A-Z]{3}", normalized):
         raise ValueError(f"{field_name} must be a three-letter IATA airport code")
+    return normalized
+
+
+def _validate_airports(codes: tuple[str, ...], field_name: str) -> tuple[str, ...]:
+    normalized = tuple(dict.fromkeys(_validate_iata(code, field_name) for code in codes))
     return normalized
 
 
@@ -72,16 +84,44 @@ class FlightQuery:
     currency: str = "EUR"
     airlines: tuple[str, ...] = ()
     departure_window: tuple[int, int] | None = None
+    origin_alternatives: tuple[str, ...] = ()
+    destination_alternatives: tuple[str, ...] = ()
+    return_origins: tuple[str, ...] = ()
+    return_destinations: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "origin", _validate_iata(self.origin, "origin"))
         object.__setattr__(self, "destination", _validate_iata(self.destination, "destination"))
-        if self.origin == self.destination:
+        object.__setattr__(
+            self,
+            "origin_alternatives",
+            _validate_airports(self.origin_alternatives, "origin alternative"),
+        )
+        object.__setattr__(
+            self,
+            "destination_alternatives",
+            _validate_airports(self.destination_alternatives, "destination alternative"),
+        )
+        object.__setattr__(
+            self, "return_origins", _validate_airports(self.return_origins, "return origin")
+        )
+        object.__setattr__(
+            self,
+            "return_destinations",
+            _validate_airports(self.return_destinations, "return destination"),
+        )
+        if set(self.outbound_origins) & set(self.outbound_destinations):
             raise ValueError("origin and destination must be different")
         if self.departure_date < date.today():
             raise ValueError("departure date must not be in the past")
         if self.return_date is not None and self.return_date <= self.departure_date:
             raise ValueError("return date must be after departure date")
+        if self.return_date is None and (self.return_origins or self.return_destinations):
+            raise ValueError("return airports require a return date")
+        if self.return_date is not None and set(self.inbound_origins) & set(
+            self.inbound_destinations
+        ):
+            raise ValueError("return origin and destination must be different")
         if self.passengers < 1:
             raise ValueError("passengers must be at least 1")
         currency = self.currency.upper()
@@ -96,6 +136,61 @@ class FlightQuery:
             start, end = self.departure_window
             if not 0 <= start <= 23 or not 1 <= end <= 24 or start >= end:
                 raise ValueError("departure window must be an ascending hour range within 0-24")
+
+    @property
+    def outbound_origins(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((self.origin, *self.origin_alternatives)))
+
+    @property
+    def outbound_destinations(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((self.destination, *self.destination_alternatives)))
+
+    @property
+    def inbound_origins(self) -> tuple[str, ...]:
+        return self.return_origins or self.outbound_destinations
+
+    @property
+    def inbound_destinations(self) -> tuple[str, ...]:
+        return self.return_destinations or self.outbound_origins
+
+    @property
+    def is_open_jaw(self) -> bool:
+        return self.return_date is not None and (
+            set(self.inbound_origins) != set(self.outbound_destinations)
+            or set(self.inbound_destinations) != set(self.outbound_origins)
+        )
+
+    def outbound_query(self) -> FlightQuery:
+        return FlightQuery(
+            origin=self.origin,
+            destination=self.destination,
+            departure_date=self.departure_date,
+            cabin=self.cabin,
+            max_stops=self.max_stops,
+            passengers=self.passengers,
+            currency=self.currency,
+            airlines=self.airlines,
+            departure_window=self.departure_window,
+            origin_alternatives=self.origin_alternatives,
+            destination_alternatives=self.destination_alternatives,
+        )
+
+    def inbound_query(self) -> FlightQuery:
+        if self.return_date is None:
+            raise ValueError("an inbound query requires a return date")
+        return FlightQuery(
+            origin=self.inbound_origins[0],
+            destination=self.inbound_destinations[0],
+            departure_date=self.return_date,
+            cabin=self.cabin,
+            max_stops=self.max_stops,
+            passengers=self.passengers,
+            currency=self.currency,
+            airlines=self.airlines,
+            departure_window=self.departure_window,
+            origin_alternatives=self.inbound_origins[1:],
+            destination_alternatives=self.inbound_destinations[1:],
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,12 +209,36 @@ class FlexibleSearchQuery:
     currency: str = "EUR"
     airlines: tuple[str, ...] = ()
     departure_window: tuple[int, int] | None = None
+    origin_alternatives: tuple[str, ...] = ()
+    destination_alternatives: tuple[str, ...] = ()
+    return_origins: tuple[str, ...] = ()
+    return_destinations: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "origin", _validate_iata(self.origin, "origin"))
         object.__setattr__(self, "destination", _validate_iata(self.destination, "destination"))
-        if self.origin == self.destination:
+        object.__setattr__(
+            self,
+            "origin_alternatives",
+            _validate_airports(self.origin_alternatives, "origin alternative"),
+        )
+        object.__setattr__(
+            self,
+            "destination_alternatives",
+            _validate_airports(self.destination_alternatives, "destination alternative"),
+        )
+        object.__setattr__(
+            self, "return_origins", _validate_airports(self.return_origins, "return origin")
+        )
+        object.__setattr__(
+            self,
+            "return_destinations",
+            _validate_airports(self.return_destinations, "return destination"),
+        )
+        if set(self.outbound_origins) & set(self.outbound_destinations):
             raise ValueError("origin and destination must be different")
+        if set(self.inbound_origins) & set(self.inbound_destinations):
+            raise ValueError("return origin and destination must be different")
         if self.start_date < date.today():
             raise ValueError("start date must not be in the past")
         if self.end_date < self.start_date:
@@ -142,6 +261,28 @@ class FlexibleSearchQuery:
             start, end = self.departure_window
             if not 0 <= start <= 23 or not 1 <= end <= 24 or start >= end:
                 raise ValueError("departure window must be an ascending hour range within 0-24")
+
+    @property
+    def outbound_origins(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((self.origin, *self.origin_alternatives)))
+
+    @property
+    def outbound_destinations(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((self.destination, *self.destination_alternatives)))
+
+    @property
+    def inbound_origins(self) -> tuple[str, ...]:
+        return self.return_origins or self.outbound_destinations
+
+    @property
+    def inbound_destinations(self) -> tuple[str, ...]:
+        return self.return_destinations or self.outbound_origins
+
+    @property
+    def is_open_jaw(self) -> bool:
+        return set(self.inbound_origins) != set(self.outbound_destinations) or set(
+            self.inbound_destinations
+        ) != set(self.outbound_origins)
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +355,10 @@ class FlightOffer:
     legs: tuple[FlightLeg, ...]
     booking_url: str | None = None
     journeys: tuple[FlightJourney, ...] = ()
+    booking_strategy: BookingStrategy = BookingStrategy.SINGLE_ITINERARY
+    component_prices: tuple[Decimal | None, ...] = ()
+    component_booking_urls: tuple[str | None, ...] = ()
+    booking_warning: str | None = None
 
     @property
     def airlines(self) -> tuple[str, ...]:
@@ -272,6 +417,10 @@ class Watch:
     currency: str = "EUR"
     airlines: tuple[str, ...] = ()
     departure_window: tuple[int, int] | None = None
+    origin_alternatives: tuple[str, ...] = ()
+    destination_alternatives: tuple[str, ...] = ()
+    return_origins: tuple[str, ...] = ()
+    return_destinations: tuple[str, ...] = ()
     target_price: Decimal | None = None
     drop_percent: Decimal | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -292,12 +441,20 @@ class Watch:
             currency=self.currency,
             airlines=self.airlines,
             departure_window=self.departure_window,
+            origin_alternatives=self.origin_alternatives,
+            destination_alternatives=self.destination_alternatives,
+            return_origins=self.return_origins,
+            return_destinations=self.return_destinations,
         )
         for field_name in (
             "origin",
             "destination",
             "currency",
             "airlines",
+            "origin_alternatives",
+            "destination_alternatives",
+            "return_origins",
+            "return_destinations",
         ):
             object.__setattr__(self, field_name, getattr(query, field_name))
         if self.target_price is not None and self.target_price < 0:
@@ -320,6 +477,10 @@ class Watch:
             currency=self.currency,
             airlines=self.airlines,
             departure_window=self.departure_window,
+            origin_alternatives=self.origin_alternatives,
+            destination_alternatives=self.destination_alternatives,
+            return_origins=self.return_origins,
+            return_destinations=self.return_destinations,
         )
 
 
@@ -338,6 +499,9 @@ class PriceObservation:
     source: str = "fli"
     quality_status: QualityStatus = QualityStatus.ACCEPTABLE
     warnings: tuple[ItineraryWarning, ...] = ()
+    booking_strategy: BookingStrategy = BookingStrategy.SINGLE_ITINERARY
+    booking_warning: str | None = None
+    routes: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if self.price < 0:
@@ -377,6 +541,9 @@ class Deal:
     stops: int | None = None
     quality_status: QualityStatus = QualityStatus.ACCEPTABLE
     warnings: tuple[ItineraryWarning, ...] = ()
+    booking_strategy: BookingStrategy = BookingStrategy.SINGLE_ITINERARY
+    booking_warning: str | None = None
+    routes: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

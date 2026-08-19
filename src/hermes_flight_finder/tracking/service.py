@@ -71,6 +71,9 @@ class WatchCheckService:
                 source="fli",
                 quality_status=assessment.status,
                 warnings=assessment.warnings,
+                booking_strategy=offer.booking_strategy,
+                booking_warning=offer.booking_warning,
+                routes=_offer_routes(offer),
             )
             deal = _evaluate(
                 watch,
@@ -108,6 +111,10 @@ class WatchCheckService:
                 currency=watch.currency,
                 airlines=watch.airlines,
                 departure_window=watch.departure_window,
+                origin_alternatives=watch.origin_alternatives,
+                destination_alternatives=watch.destination_alternatives,
+                return_origins=watch.return_origins,
+                return_destinations=watch.return_destinations,
             )
             offers = SearchService(self._provider).search(query)
             ranked = assess_and_rank_offers(offers, self._quality_policy)
@@ -154,6 +161,9 @@ def _evaluate(
         stops=observation.stops,
         quality_status=observation.quality_status,
         warnings=observation.warnings,
+        booking_strategy=observation.booking_strategy,
+        booking_warning=observation.booking_warning,
+        routes=observation.routes,
     )
 
 
@@ -163,4 +173,16 @@ def _already_alerted(observation: PriceObservation, alerts: list[AlertRecord]) -
         and alert.departure_date == observation.departure_date
         and alert.return_date == observation.return_date
         for alert in alerts
+    )
+
+
+def _offer_routes(offer: object) -> tuple[tuple[str, str], ...]:
+    from hermes_flight_finder.models import FlightOffer
+
+    if not isinstance(offer, FlightOffer):
+        raise TypeError("Expected a flight offer")
+    return tuple(
+        (journey.legs[0].departure_airport, journey.legs[-1].arrival_airport)
+        for journey in offer.journeys
+        if journey.legs
     )

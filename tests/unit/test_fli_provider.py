@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Protocol, cast
 
 import pytest
+from fli.models import Airport, FlightSearchFilters, TripType
 
 from hermes_flight_finder.models import FlexibleSearchQuery, FlightQuery
 from hermes_flight_finder.providers import BookingOptionsUnavailable
@@ -69,8 +70,10 @@ class _FakeSearchClient:
         self.booking_options = booking_options
         self.currency: str | None = None
         self.booked_flight: object | None = None
+        self.filters: object | None = None
 
     def search(self, filters: object, top_n: int = 5, currency: str | None = None) -> object:
+        self.filters = filters
         self.currency = currency
         return self.results
 
@@ -96,13 +99,33 @@ class _FakeSearchClient:
 
 @dataclass(frozen=True)
 class _RawDatePrice:
-    date: tuple[datetime, datetime]
+    date: tuple[datetime] | tuple[datetime, datetime]
     price: float
     currency: str | None
 
 
 class _DateFilters(Protocol):
     duration: int
+
+
+class _OpenJawDateFilters(Protocol):
+    from_date: str
+
+
+class _OpenJawDateSearchClient:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def search(self, filters: object, currency: str | None = None) -> object:
+        from_date = cast(_OpenJawDateFilters, filters).from_date
+        self.calls.append(from_date)
+        return [
+            _RawDatePrice(
+                date=(datetime.fromisoformat(from_date),),
+                price=50.0,
+                currency=currency,
+            )
+        ]
 
 
 class _FakeDateSearchClient:
@@ -182,6 +205,34 @@ def test_provider_normalizes_round_trip() -> None:
     assert offers[0].journeys[0].self_transfer is True
 
 
+def test_provider_builds_multi_city_filters_with_airport_groups() -> None:
+    client = _FakeSearchClient([])
+    provider = FliFlightProvider(search_factory=lambda: client)
+    query = FlightQuery(
+        origin="JFK",
+        destination="LHR",
+        departure_date=date.today() + timedelta(days=10),
+        return_date=date.today() + timedelta(days=17),
+        origin_alternatives=("LGA", "EWR"),
+        destination_alternatives=("LGW",),
+        return_origins=("CDG", "ORY"),
+        return_destinations=("BOS",),
+    )
+
+    provider.search(query)
+
+    assert client.filters is not None
+    filters = cast(FlightSearchFilters, client.filters)
+    assert filters.trip_type == TripType.MULTI_CITY
+    segments = filters.flight_segments
+    assert [cast(Airport, item[0]).name for item in segments[0].departure_airport] == [
+        "JFK",
+        "LGA",
+        "EWR",
+    ]
+    assert [cast(Airport, item[0]).name for item in segments[1].arrival_airport] == ["BOS"]
+
+
 def test_provider_rejects_generic_google_flights_url_as_itinerary_handoff() -> None:
     client = _FakeSearchClient(
         [_raw_flight("HAM", "NCE", 89.0)],
@@ -219,6 +270,30 @@ def test_provider_expands_each_requested_duration() -> None:
     assert [str(offer.price) for offer in offers] == ["98.0", "97.0", "96.0"]
     assert all(offer.booking_url for offer in offers)
     assert "Flights%20from%20HAM%20to%20NCE" in (offers[0].booking_url or "")
+
+
+def test_provider_combines_one_way_calendars_for_open_jaw_discovery() -> None:
+    client = _OpenJawDateSearchClient()
+    provider = FliFlightProvider(date_search_factory=lambda: client)
+    start = date.today() + timedelta(days=10)
+    query = FlexibleSearchQuery(
+        origin="HAM",
+        destination="NCE",
+        start_date=start,
+        end_date=start + timedelta(days=5),
+        min_nights=7,
+        max_nights=7,
+        return_origins=("MRS",),
+        return_destinations=("BER",),
+    )
+
+    offers = provider.search_dates(query)
+
+    assert client.calls == [start.isoformat(), (start + timedelta(days=7)).isoformat()]
+    assert offers[0].price == 100
+    assert offers[0].departure_date == start
+    assert offers[0].return_date == start + timedelta(days=7)
+    assert "then%20from%20MRS%20to%20BER" in (offers[0].booking_url or "")
 
 
 def test_provider_returns_direct_booking_handoffs_for_the_ranked_offer() -> None:

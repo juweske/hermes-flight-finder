@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from hermes_flight_finder.models import (
+    BookingStrategy,
     ItineraryWarning,
     MaxStops,
     PriceObservation,
@@ -26,6 +27,10 @@ def _watch() -> Watch:
         min_nights=2,
         max_nights=5,
         max_stops=MaxStops.NON_STOP,
+        origin_alternatives=("LBC",),
+        destination_alternatives=("MRS",),
+        return_origins=("MRS",),
+        return_destinations=("BER",),
         target_price=Decimal("90"),
         drop_percent=Decimal("20"),
         created_at=datetime(2026, 8, 15, 12, 0, tzinfo=UTC),
@@ -79,6 +84,9 @@ def test_repository_preserves_observation_source(tmp_path: Path) -> None:
                 journey=1,
             ),
         ),
+        booking_strategy=BookingStrategy.SEPARATE_TICKETS,
+        booking_warning="Independent bookings.",
+        routes=(("HAM", "NCE"), ("MRS", "BER")),
     )
 
     repository.record_observation(observation)
@@ -113,3 +121,6 @@ def test_repository_defaults_legacy_observation_source_to_fli(tmp_path: Path) ->
     assert observations[0].source == "fli"
     assert observations[0].quality_status == QualityStatus.ACCEPTABLE
     assert observations[0].warnings == ()
+    assert observations[0].booking_strategy == BookingStrategy.SINGLE_ITINERARY
+    assert observations[0].booking_warning is None
+    assert observations[0].routes == ()
